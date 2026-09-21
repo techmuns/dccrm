@@ -179,7 +179,10 @@ export function mountDataTable(container, {
     state = 'ready';
     setOverlay('ready');
     applySort();
-    viewport.scrollTop = 0;
+    // Preserve scroll position across data refreshes (e.g. an inline edit) — only
+    // clamp it to the new content height so the view never ends up past the end.
+    const maxScroll = Math.max(0, rows.length * ROW_HEIGHT - viewport.clientHeight);
+    if (viewport.scrollTop > maxScroll) viewport.scrollTop = maxScroll;
     renderWindow();
   }
 

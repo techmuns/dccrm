@@ -4,13 +4,45 @@ A calm, visual-first dashboard for Dhamma Capital's investor relationships. It
 replaces a cluttered sales-style CRM view with something anyone — even a
 non-financial reader — understands at a glance.
 
-**All five tabs are built.** Phase 1 laid the reusable foundation and the
-**Overview** tab; Phase 2 added **Contacts** and **Follow-ups** (sharing one
-FilterBar, DataTable and DetailDrawer); Phase 3 adds **Campaigns** and **AI
-Insights**. Campaigns and AI Insights run on their own sample data for now (real
-email stats and AI-read replies connect later) — each shows a small "Sample data —
-connects to a live source later" note and can be replaced with your own file the
-same way the contacts sheet can.
+**All five tabs are built, and Contacts is now a real CRM** backed by a shared
+**Cloudflare D1** database (add / edit / delete / import / export + an activity
+timeline). Phase 1 laid the reusable foundation and the **Overview** tab; Phase 2
+added **Contacts** and **Follow-ups** (sharing one FilterBar, DataTable and
+DetailDrawer); Phase 3 added **Campaigns** and **AI Insights**; the CRM upgrade put
+Contacts on a live API. Campaigns and AI Insights still run on their own sample
+data (real email stats and AI-read replies connect later) — each shows a small
+"Sample data — connects to a live source later" note.
+
+If the database isn't reachable (e.g. a preview build with no binding), the app
+falls back to the read-only sample and shows a "Preview mode" banner, so it always
+renders.
+
+## Database & one-time setup (Cloudflare D1)
+
+Contacts live in a Cloudflare D1 database, reached through Pages Functions under
+`/functions/api`. The API needs a D1 binding named **`DB`**. One-time steps:
+
+```bash
+# 1. Create the database (copy the database_id it prints)
+wrangler d1 create dccrm
+
+# 2. Create the tables and seed the ~120 sample contacts (idempotent)
+wrangler d1 execute dccrm --remote --file=./schema.sql
+
+# 3. Bind it to your Pages project as DB — either:
+#    • Dashboard: Pages → your project → Settings → Functions → D1 bindings →
+#      add binding  Variable name: DB  →  Database: dccrm      (recommended), or
+#    • wrangler.toml: uncomment the [[d1_databases]] block and paste the id.
+```
+
+Redeploy (or push) and Contacts is live. To restrict the whole app to your team,
+turn on **Cloudflare Access** (Zero Trust → Access → Applications → add your Pages
+domain with an email/one-time-PIN policy) — it sits in front of the site and the API.
+
+**API** (all under `/api`): `GET/POST /api/contacts`, `GET/PUT/DELETE
+/api/contacts/:id`, `POST /api/contacts/:id/activities`, `POST /api/import`
+(upsert by email), `GET /api/export` (CSV). Excel/CSV is import/export only — the
+database is the source of truth.
 
 ## Running it
 
@@ -79,6 +111,15 @@ Modular by design, so later phases add a tab file and one line in `app.js`.
 
 ```
 index.html            App shell + the whole design system (one card, one type scale, palette)
+schema.sql            D1 tables (contacts, activities) + idempotent seed of the sample
+wrangler.toml         Pages/Functions config (bind D1 as DB here or in the dashboard)
+functions/api/        The CRM API (Cloudflare Pages Functions)
+  _lib.js               Shared helpers (validation, JSON responses, CSV)
+  contacts/index.js     GET list · POST create
+  contacts/[id].js      GET one+timeline · PUT edit · DELETE
+  contacts/[id]/activities.js   GET · POST log an activity
+  import.js             POST bulk upsert by email
+  export.js             GET all contacts as CSV
 data/
   contacts.sample.json    ~120 example contacts (the fallback dataset)
   campaigns.sample.json   ~10 example email campaigns
@@ -89,7 +130,7 @@ js/
   colors.js           One stable colour per category, assigned once from the full data
   data.js             Normalise rows + shared calculations (source-agnostic)
   filters.js          Pure filter / urgency-bucket / nudge / CSV helpers
-  store.js            Holds the contacts "what are we looking at"; load, upload, persist, search
+  store.js            Contacts state + the live D1 API calls (create/edit/delete/import) with sample fallback
   source.js           Generic sample-vs-upload data source (used by Campaigns + AI Insights)
   campaigns.js        Campaigns data layer (funnel + rate maths) — swap the loader for a live feed
   ai-insights.js      ALL AI scoring thresholds + enrichment mapping (swappable module)

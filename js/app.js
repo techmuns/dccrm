@@ -16,6 +16,8 @@ import { render as renderInsights } from './tabs/insights.js';
 import { campaignsSource } from './campaigns.js';
 import { insightsSource } from './ai-insights.js';
 import { parseSpreadsheet } from './upload.js';
+import { normalizeRows } from './data.js';
+import { openNewContact } from './components/drawer.js';
 import { h, icon, refreshIcons, toast } from './ui.js';
 import { debounce, formatDate, formatNumber } from './util.js';
 
@@ -27,6 +29,9 @@ const el = {
   nav: document.getElementById('tab-nav'),
   view: document.querySelector('#view > div'),
   drop: document.getElementById('drop-overlay'),
+  addBtn: document.getElementById('add-btn'),
+  exportBtn: document.getElementById('export-btn'),
+  previewBanner: document.getElementById('preview-banner'),
 };
 
 /* ---------- tabs ---------- */
@@ -46,39 +51,35 @@ insightsSource.init();
 
 function renderChip(state) {
   el.chip.replaceChildren();
+  const preview = state.mode === 'preview';
+  const ready = state.status === 'ready';
+
+  // preview mode: show the banner, turn off the write controls
+  el.previewBanner.hidden = !(preview && ready);
+  el.addBtn.disabled = preview;
+  el.uploadBtn.style.display = preview ? 'none' : '';
+  el.exportBtn.style.display = preview ? 'none' : '';
+  refreshIcons(el.previewBanner);
+
   if (state.status === 'loading') {
     el.chip.append(h('span', { class: 'chip chip--sample' }, [
-      icon('loader-circle', 'size-3.5 animate-spin'), h('span', { text: 'Loading data…' }),
+      icon('loader-circle', 'size-3.5 animate-spin'), h('span', { text: 'Connecting…' }),
     ]));
   } else if (state.status === 'error') {
     el.chip.append(h('span', { class: 'chip chip--warn' }, [
-      icon('triangle-alert', 'size-3.5'), h('span', { text: 'No data loaded' }),
+      icon('triangle-alert', 'size-3.5'), h('span', { text: "Couldn't load contacts" }),
     ]));
-  } else if (state.source === 'upload') {
-    el.chip.append(h('span', { class: 'chip chip--upload' }, [
-      icon('file-spreadsheet', 'size-3.5'),
-      h('span', { text: 'Data: your upload' }),
-      h('span', { class: 'chip-name', text: `· ${state.fileName}` }),
-      h('span', { text: `· ${formatDate(state.loadedAt)}` }),
-      h('button', {
-        class: 'chip-action', type: 'button', text: 'Reset to sample',
-        onClick: async () => {
-          if (!confirm('Go back to the sample data? Your uploaded sheet will be removed from this browser.')) return;
-          await store.resetToSample();
-          toast('Back on the sample data.', 'good');
-        },
-      }),
+  } else if (preview) {
+    el.chip.append(h('span', { class: 'chip chip--warn' }, [
+      icon('database', 'size-3.5'),
+      h('span', { text: 'Preview mode' }),
+      h('span', { class: 'hidden sm:inline', text: '· sample data, read-only' }),
     ]));
-    if (!state.persisted) {
-      el.chip.append(h('span', { class: 'chip chip--warn ml-2', title: 'This browser could not store a sheet that large.' }, [
-        icon('info', 'size-3.5'), h('span', { text: "Too big to remember — you'll need to upload again after a refresh" }),
-      ]));
-    }
   } else {
-    el.chip.append(h('span', { class: 'chip chip--sample' }, [
-      icon('sparkles', 'size-3.5'),
-      h('span', { text: 'Data: sample' }),
-      h('span', { class: 'hidden sm:inline', text: `· ${formatNumber(state.contacts.length)} example contacts` }),
+    el.chip.append(h('span', { class: 'chip chip--upload' }, [
+      icon('database', 'size-3.5'),
+      h('span', { text: 'Live database' }),
+      h('span', { class: 'hidden sm:inline', text: `· ${formatNumber(state.contacts.length)} contacts` }),
     ]));
   }
   refreshIcons(el.chip);
@@ -90,20 +91,20 @@ let busy = false;
 
 async function handleFile(file) {
   if (busy || !file) return;
+  if (!store.isLive()) { toast('Connect the database to import — preview mode is read-only.', 'warn'); return; }
   busy = true;
   el.uploadBtn.disabled = true;
   try {
-    const { rows, sheetName, matchedColumns } = await parseSpreadsheet(file);
-    store.adoptUpload(rows, file.name);
-    const loaded = store.getState().contacts.length;
+    const { rows, sheetName } = await parseSpreadsheet(file);
+    const { contacts } = normalizeRows(rows);            // map headers → fields, validate
+    const res = await store.importContacts(contacts);
+    if (!res.ok) { toast(res.error || "We couldn't import that file.", 'error'); return; }
     toast(
-      `Loaded ${formatNumber(loaded)} contacts from “${sheetName}” — ${matchedColumns} columns matched.`,
+      `Imported “${sheetName}” — ${formatNumber(res.added)} added · ${formatNumber(res.updated)} updated` +
+      (res.skipped ? ` · ${formatNumber(res.skipped)} skipped` : '') + '.',
       'good',
     );
-    const notice = store.getState().notice;
-    if (notice) toast(notice, 'warn');
   } catch (err) {
-    // The previous data stays on screen; only the message changes.
     toast(err.message || "We couldn't read that file.", 'error');
   } finally {
     busy = false;
@@ -114,6 +115,11 @@ async function handleFile(file) {
 
 el.uploadBtn.addEventListener('click', () => el.fileInput.click());
 el.fileInput.addEventListener('change', (event) => handleFile(event.target.files?.[0]));
+
+el.addBtn.addEventListener('click', () => {
+  if (store.isLive()) openNewContact();
+  else toast('Connect the database to add contacts.', 'warn');
+});
 
 /* drag a sheet anywhere onto the page */
 let dragDepth = 0;

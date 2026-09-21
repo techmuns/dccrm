@@ -30,6 +30,21 @@ export function registerDimension(dimension, orderedNames) {
   return map;
 }
 
+/**
+ * Give a brand-new category a colour WITHOUT repainting the existing ones — it takes
+ * the next free palette slot. Used when a contact is added/edited into a category
+ * the initial data didn't have, so single writes never reshuffle colours.
+ */
+export function ensureCategory(dimension, name) {
+  if (!name) return;
+  let map = dimensions.get(dimension);
+  if (!map) { map = new Map(); dimensions.set(dimension, map); }
+  if (map.has(name)) return;
+  if (name === STAGE_DORMANT) { map.set(name, NEUTRAL); return; }
+  const used = [...map.values()].filter((c) => PALETTE.includes(c)).length;
+  map.set(name, used < PALETTE.length ? PALETTE[used] : NEUTRAL);
+}
+
 export function colorOf(dimension, name) {
   const map = dimensions.get(dimension);
   return (map && map.get(name)) || NEUTRAL;
