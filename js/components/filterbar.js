@@ -175,9 +175,23 @@ export function createFilterBar({ dimensions = [], toggles = [], onChange, debou
     announce();
   }
 
+  /** Replace all selections with a preset { field: [values] } (used by cross-tab jumps). */
+  function setSelections(preset) {
+    for (const set of selections.values()) set.clear();
+    for (const [field, values] of Object.entries(preset || {})) {
+      const set = selections.get(field);
+      if (!set) continue;
+      for (const v of values) set.add(v);
+      updateCount(field);
+    }
+    renderChips();
+    announce();
+  }
+
   return {
     el,
     chipsEl,
+    setSelections,
     setData(next) {
       contacts = next || [];
       // Drop any selected value that no longer exists in the data (e.g. after upload).

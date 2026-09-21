@@ -21,6 +21,7 @@ import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
 import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
+import { takeContactsPreset } from '../nav.js';
 
 /** Stage-split items covering EVERYONE in the selection, in pipeline order. */
 function stageSplitItems(contacts) {
@@ -178,6 +179,8 @@ export function render(container) {
       return;
     }
     filterBar.setData(state.contacts);
+    const preset = takeContactsPreset();
+    if (preset) filterBar.setSelections(preset);   // arrives from a cross-tab jump
     refresh();
   }
 

@@ -115,7 +115,9 @@ const toISO = (date) =>
  * Stage follows pipeline order; everything else follows how common it is.
  */
 export function assignColors(contacts) {
-  resetColors();
+  // Re-register each contact dimension (registerDimension replaces that dimension's
+  // map). We intentionally do NOT reset the whole registry — other modules
+  // (e.g. Campaigns' 'segment') register their own dimensions and must survive.
   for (const dimension of COLOURED_DIMENSIONS) {
     const present = rank(countBy(contacts, dimension)).map((d) => d.name);
     const ordered = dimension === 'stage'

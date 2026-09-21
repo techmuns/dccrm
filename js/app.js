@@ -11,7 +11,10 @@ import { registerTab, mountTabs, pushState } from './router.js';
 import { render as renderOverview } from './tabs/overview.js';
 import { render as renderContacts } from './tabs/contacts.js';
 import { render as renderFollowups } from './tabs/followups.js';
-import { comingSoon } from './tabs/coming-soon.js';
+import { render as renderCampaigns } from './tabs/campaigns.js';
+import { render as renderInsights } from './tabs/insights.js';
+import { campaignsSource } from './campaigns.js';
+import { insightsSource } from './ai-insights.js';
 import { parseSpreadsheet } from './upload.js';
 import { h, icon, refreshIcons, toast } from './ui.js';
 import { debounce, formatDate, formatNumber } from './util.js';
@@ -31,27 +34,13 @@ const el = {
 registerTab('overview', { render: renderOverview });
 registerTab('contacts', { render: renderContacts });
 registerTab('followups', { render: renderFollowups });
+registerTab('campaigns', { render: renderCampaigns });
+registerTab('insights', { render: renderInsights });
 
-const SOON = {
-  campaigns: {
-    blurb: 'Outreach you have sent, who opened it, and which conversations it started.',
-    bullets: ['Email and WhatsApp', 'Who replied', 'What worked'],
-  },
-  insights: {
-    blurb: 'Quiet patterns worth knowing — relationships going cold, types of investor converting best.',
-    bullets: ['Going-cold alerts', 'What converts', 'Suggested next steps'],
-  },
-};
-
-for (const tab of TABS) {
-  if (tab.ready) continue;
-  registerTab(tab.id, comingSoon({
-    label: `${tab.label} is coming next`,
-    iconName: tab.icon,
-    blurb: SOON[tab.id]?.blurb || '',
-    bullets: SOON[tab.id]?.bullets || [],
-  }));
-}
+/* Campaigns and AI Insights run on their own sample sources (a live feed replaces
+   them later); warm them at boot so a tab opens with data already in hand. */
+campaignsSource.init();
+insightsSource.init();
 
 /* ---------- data status chip ---------- */
 
