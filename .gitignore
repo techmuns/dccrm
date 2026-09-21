@@ -7,3 +7,6 @@ node_modules/
 
 # Cloudflare local dev state
 .wrangler/
+
+# Local dev secrets (never committed)
+.dev.vars

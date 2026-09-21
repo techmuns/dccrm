@@ -42,10 +42,11 @@ registerTab('followups', { render: renderFollowups });
 registerTab('campaigns', { render: renderCampaigns });
 registerTab('insights', { render: renderInsights });
 
-/* Campaigns and AI Insights run on their own sample sources (a live feed replaces
-   them later); warm them at boot so a tab opens with data already in hand. */
-campaignsSource.init();
-insightsSource.init();
+/* Campaigns and AI Insights run on their own sources. In live mode they load from the
+   database (campaigns from D1, AI Insights from the enrichment feed); in preview they
+   fall back to their sample JSON. They are warmed once the store settles which mode
+   we're in (see the store subscription below), so "live but not scored yet" shows the
+   real empty state rather than the sample. */
 
 /* ---------- data status chip ---------- */
 
@@ -177,9 +178,17 @@ window.addEventListener('keydown', (event) => {
 
 /* ---------- go ---------- */
 
+let sourcesWarmed = false;
 store.subscribe((state) => {
   renderChip(state);
   pushState(state);
+  // Once we know whether we're live or in preview, warm the tab sources with the
+  // correct mode (only once — the tabs re-init themselves on open if still loading).
+  if (!sourcesWarmed && state.status === 'ready') {
+    sourcesWarmed = true;
+    campaignsSource.init();
+    insightsSource.init();
+  }
 });
 
 mountTabs({ nav: el.nav, view: el.view, initial: 'overview' });

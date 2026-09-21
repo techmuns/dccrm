@@ -7,20 +7,21 @@
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { formatDate } from '../util.js';
 
-export function createSourceNote({ source, accept = '.json', readFile, noun = 'data' }) {
+export function createSourceNote({ source, accept = '.json', readFile, noun = 'data', liveLabel = 'Import…' }) {
   const text = h('span', { class: 'sn-text' });
+  const ico = h('span', { class: 'sn-ico' }, [icon('flask-conical', 'size-4')]);
   const fileInput = h('input', { type: 'file', accept, class: 'hidden' });
   fileInput.addEventListener('change', (e) => onFile(e.target.files?.[0]));
 
+  const replaceLabel = document.createTextNode('Replace…');
   const replaceBtn = h('button', { class: 'sn-btn', type: 'button', onClick: () => fileInput.click() },
-    [icon('upload', 'size-3.5'), 'Replace…']);
+    [icon('upload', 'size-3.5'), replaceLabel]);
   const resetBtn = h('button', { class: 'sn-btn', type: 'button', title: 'Back to the sample data',
     onClick: async () => { await source.reset(); toast(`Back to the sample ${noun}.`, 'good'); } });
   resetBtn.append(icon('rotate-ccw', 'size-3.5'), document.createTextNode('Reset'));
 
   const el = h('div', { class: 'source-note' }, [
-    h('span', { class: 'sn-ico' }, [icon('flask-conical', 'size-4')]),
-    text,
+    ico, text,
     h('div', { class: 'sn-actions' }, [replaceBtn, resetBtn, fileInput]),
   ]);
 
@@ -29,9 +30,14 @@ export function createSourceNote({ source, accept = '.json', readFile, noun = 'd
     replaceBtn.disabled = true;
     try {
       const raw = await readFile(file);
-      source.replace(raw, file.name);
-      toast(`Loaded ${noun} from “${file.name}”.`, 'good');
-      if (!source.state.persisted) toast("That file was too big to remember after a refresh.", 'warn');
+      const res = await source.replace(raw, file.name);
+      if (source.state.origin === 'live' && res && (res.added != null || res.updated != null)) {
+        toast(`Imported ${noun} — ${res.added || 0} added · ${res.updated || 0} updated` +
+          (res.skipped ? ` · ${res.skipped} skipped` : '') + '.', 'good');
+      } else {
+        toast(`Loaded ${noun} from “${file.name}”.`, 'good');
+        if (!source.state.persisted) toast('That file was too big to remember after a refresh.', 'warn');
+      }
     } catch (err) {
       toast(err.message || "We couldn't read that file.", 'error');
     } finally {
@@ -42,11 +48,25 @@ export function createSourceNote({ source, accept = '.json', readFile, noun = 'd
 
   function refresh() {
     const s = source.state;
-    if (s.origin === 'upload') {
+    if (s.origin === 'live') {
+      // Real data from the database. Keep the import affordance; drop the "sample" framing.
+      ico.replaceChildren(icon('database', 'size-4'));
+      const count = Array.isArray(s.data) ? s.data.length : 0;
+      text.innerHTML = `<b>Live ${noun}</b> · ${count} in your database · import updates them`;
+      replaceLabel.textContent = liveLabel;
+      replaceBtn.style.display = '';
+      resetBtn.style.display = 'none';
+    } else if (s.origin === 'upload') {
+      ico.replaceChildren(icon('flask-conical', 'size-4'));
       text.innerHTML = `<b>Your data</b> · ${s.fileName ? s.fileName + ' · ' : ''}connects to a live source later`;
+      replaceLabel.textContent = 'Replace…';
+      replaceBtn.style.display = '';
       resetBtn.style.display = '';
     } else {
+      ico.replaceChildren(icon('flask-conical', 'size-4'));
       text.innerHTML = `<b>Sample ${noun}</b> — connects to a live source later`;
+      replaceLabel.textContent = 'Replace…';
+      replaceBtn.style.display = '';
       resetBtn.style.display = 'none';
     }
     refreshIcons(el);

@@ -7,6 +7,7 @@
  * scoring lives in ai-insights.js, so real reply-reading swaps in with no UI change.
  */
 import { PALETTE } from '../config.js';
+import * as store from '../store.js';
 import { card, h, icon, refreshIcons, toast } from '../ui.js';
 import { donutOption, barOption } from '../charts.js';
 import { formatNumber, formatDate, escapeHtml } from '../util.js';
@@ -72,6 +73,8 @@ function priorityCard(c) {
         ]),
       ]),
       h('span', { class: 'reason-badge' }, [icon('flag', 'size-3.5'), `${c.ai.reason}`]),
+      c.ai.relationshipSummary ? h('div', { class: 'ai-line', text: c.ai.relationshipSummary }) : null,
+      c.ai.suggestedNextStep ? h('div', { class: 'ai-next' }, [icon('arrow-right', 'size-3.5'), h('span', { text: c.ai.suggestedNextStep })]) : null,
     ], c.ai.lastReplySnippet, c.ai.suggestedReply),
   ]);
   // opening the profile: a small link under the name
@@ -118,6 +121,35 @@ function quietItem(c) {
 export function render(container) {
   const note = createSourceNote({ source: insightsSource, accept: '.json', readFile: readJsonFile, noun: 'AI insights' });
 
+  /* Live toolbar (real data): re-score everyone via the bulk GitHub Action, plus when
+     the AI last ran. Shown instead of the sample note when the database is connected. */
+  const analysed = h('span', { class: 't-caption ai-analysed' });
+  const refreshAllBtn = h('button', { class: 'sn-btn sn-btn--primary', type: 'button' },
+    [icon('sparkles', 'size-3.5'), h('span', { text: 'Refresh all AI' })]);
+  refreshAllBtn.addEventListener('click', onRefreshAll);
+  const liveBar = h('div', { class: 'source-note source-note--live' }, [
+    h('span', { class: 'sn-ico' }, [icon('brain-circuit', 'size-4')]),
+    h('span', { class: 'sn-text' }, [h('b', { text: 'Live AI' }), document.createTextNode(' · scored from your contacts & replies '), analysed]),
+    h('div', { class: 'sn-actions' }, [refreshAllBtn]),
+  ]);
+  const topNote = h('div', {}, [note.el, liveBar]);
+
+  async function onRefreshAll() {
+    refreshAllBtn.disabled = true;
+    try {
+      const res = await store.refreshAllAi('all');
+      if (!res.ok) {
+        if (res.code === 'no-dispatch') toast('Bulk scoring needs the GitHub dispatch secrets (see setup). You can still use “Refresh AI” on a single contact.', 'warn');
+        else if (res.code === 'no-bedrock') toast('Set the BEDROCK_API_KEY secret to switch AI on.', 'warn');
+        else toast(res.error || 'Could not start the run.', 'error');
+        return;
+      }
+      toast('Scoring your contacts in the background — the tab updates in a few minutes.', 'good');
+    } finally {
+      refreshAllBtn.disabled = false;
+    }
+  }
+
   const sentiment = createChartCard({
     title: 'How they feel', subtitle: 'Sentiment of the latest replies.',
     iconName: 'smile', accent: PALETTE[2], chartClass: 'chart--mini-donut',
@@ -154,13 +186,21 @@ export function render(container) {
     h('div', { class: 'lg:col-span-5' }, [quietCard.el]),
   ]);
 
-  container.append(note.el, overview, priorityCardEl.el, bottom);
+  container.append(topNote, overview, priorityCardEl.el, bottom);
   refreshIcons(container);
 
   let latestState = null;
 
   function rebuild() {
     note.refresh();
+    const live = store.isLive();
+    note.el.style.display = live ? 'none' : '';
+    liveBar.style.display = live ? '' : 'none';
+    if (live) {
+      const meta = store.getState().aiMeta;
+      analysed.textContent = meta && meta.analyzedAt ? `· last analysed ${formatDate(new Date(meta.analyzedAt))}` : '· not scored yet';
+      refreshIcons(liveBar);
+    }
     const contactsReady = latestState && latestState.status === 'ready';
     const s = insightsSource.state;
 
@@ -178,7 +218,9 @@ export function render(container) {
 
     const list = joinInsights(latestState.contacts, s.data);
     if (!list.length) {
-      const msg = 'No AI-scored replies match these contacts yet.';
+      const msg = live
+        ? 'No AI scores yet — click “Refresh all AI” above, or open a contact and choose “Refresh AI”.'
+        : 'No AI-scored replies match these contacts yet.';
       for (const w of [sentiment, buckets]) w.setState('empty', { message: msg });
       priorityCardEl.setState('empty', { message: msg });
       repliesCard.setState('empty', { message: msg }); quietCard.setState('empty', { message: msg });

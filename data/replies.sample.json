@@ -1,0 +1,50 @@
+[
+  {
+    "fromEmail": "sarah.chen@sterlingpeakpms.com",
+    "fromName": "Sarah Chen",
+    "subject": "Re: Dhamma Capital — Q1 investor letter",
+    "receivedAt": "2026-09-18",
+    "messageId": "sample-reply-1",
+    "body": "Thank you for sending this across — the letter was genuinely helpful and the strategy resonates with us. Before we take the next step, could you share the audited track record for the last three years? And what is the minimum commitment for the current vehicle? We'd love to set up a call in the next couple of weeks."
+  },
+  {
+    "fromEmail": "ishaan.watanabe@trimurtiassetman.com",
+    "fromName": "Ishaan Watanabe",
+    "subject": "Re: Follow-up on our conversation",
+    "receivedAt": "2026-09-17",
+    "messageId": "sample-reply-2",
+    "body": "Good speaking last week. We remain interested. One open question from our IC: how do the management and performance fees compare to peers, and is there a lock-up? Once we have that we can move to diligence."
+  },
+  {
+    "fromEmail": "kabir.lim@protonmail.com",
+    "fromName": "Kabir Lim",
+    "subject": "Re: Meeting next Tuesday",
+    "receivedAt": "2026-09-19",
+    "messageId": "sample-reply-3",
+    "body": "Confirmed for Tuesday, looking forward to it. Please could you bring the latest factsheet and a short note on the risk framework? Excited to progress this."
+  },
+  {
+    "fromEmail": "siddharth.kulkarni@lakeshoreholding.com",
+    "fromName": "Siddharth Kulkarni",
+    "subject": "Re: Introduction to Dhamma Capital",
+    "receivedAt": "2026-09-12",
+    "messageId": "sample-reply-4",
+    "body": "Thanks for reaching out. The timing isn't right for us this quarter — we're fully allocated. Do stay in touch and perhaps revisit early next year."
+  },
+  {
+    "fromEmail": "tara.lockhart@brookvaleglobal.capital",
+    "fromName": "Tara Lockhart",
+    "subject": "Re: Fund deck and DDQ",
+    "receivedAt": "2026-09-20",
+    "messageId": "sample-reply-5",
+    "body": "Appreciate the deck. This looks compelling. Two questions before we take it to our committee: what is the current AUM and the strategy's capacity, and how liquid are redemptions? Happy to sign an NDA if that helps you share more."
+  },
+  {
+    "fromEmail": "priya.menon@evergreen-familyoffice.example",
+    "fromName": "Priya Menon",
+    "subject": "Re: Dhamma Capital introduction",
+    "receivedAt": "2026-09-16",
+    "messageId": "sample-reply-6",
+    "body": "Thank you — this is interesting. Could you tell me more about the team's background and where the fund is domiciled? We are early in our process but keen to learn more."
+  }
+]

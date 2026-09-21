@@ -6,6 +6,7 @@
 import { PALETTE } from './config.js';
 import { registerDimension, colorOf, hasOwnColor } from './colors.js';
 import { createSource } from './source.js';
+import * as store from './store.js';
 import { parseDate, tidy, rank, countBy } from './util.js';
 
 /* The email funnel, in order. Colours are fixed so a stage looks the same
@@ -87,4 +88,12 @@ export const campaignsSource = createSource({
   storageKey: 'dccrm.campaigns.v1',
   sampleUrl: 'data/campaigns.sample.json',
   parse: parseCampaigns,
+  // Live: the campaigns table in D1. Importing a Zoho export upserts into D1; an
+  // empty table falls back to the sample so the tab is never blank.
+  live: {
+    isLive: () => store.isLive(),
+    load: async () => store.listCampaigns(),
+    onReplace: async (rows) => store.importCampaigns(rows),
+    fallbackWhenEmpty: true,
+  },
 });

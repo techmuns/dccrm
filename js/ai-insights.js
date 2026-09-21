@@ -8,6 +8,7 @@
  * DOM or knows about charts; it only turns raw signals into scored, labelled data.
  */
 import { createSource } from './source.js';
+import * as store from './store.js';
 import { daysFromToday, tidy, parseDate } from './util.js';
 
 /* ---- the knobs a data scientist would tune (all in one place) ---- */
@@ -88,6 +89,9 @@ export function enrich(contact, raw) {
       replyAgoDays,
       lastReplySnippet: tidy(raw.lastReplySnippet),
       suggestedReply: tidy(raw.suggestedReply),
+      relationshipSummary: tidy(raw.relationshipSummary),   // Feature 1
+      suggestedNextStep: tidy(raw.suggestedNextStep),       // Feature 1
+      analyzedAt: parseDate(raw.analyzedAt),
       reason: reasonFor(questions, replyAgoDays),
       isPriority: priority === 'High',
       isQuietWarm: score >= THRESHOLDS.warm && priority !== 'High' && replyAgoDays != null && replyAgoDays >= THRESHOLDS.quietDays,
@@ -145,4 +149,12 @@ export const insightsSource = createSource({
   storageKey: 'dccrm.aiInsights.v1',
   sampleUrl: 'data/ai-insights.sample.json',
   parse: parseInsights,
+  // When the database is connected, the feed is REAL: each contact's stored AI
+  // enrichment merged with their latest analysed reply, keyed by email (see
+  // /api/insights). Empty (nothing scored yet) shows the tab's empty state + the
+  // "Refresh all AI" call to action, rather than the sample.
+  live: {
+    isLive: () => store.isLive(),
+    load: async () => (await store.getInsights()).insights || {},
+  },
 });

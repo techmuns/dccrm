@@ -1,0 +1,42 @@
+name: Ingest email replies
+
+# Reads NEW client replies from the dedicated IMAP inbox (or the sample file in TEST
+# mode until IMAP is connected), analyses each on Bedrock, and POSTs them to the Worker
+# (/api/replies/ingest, authenticated with INGEST_SECRET) which matches them to contacts.
+# Runs every 15 minutes, or on demand.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: email-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Only the IMAP path needs these; installed here (the app itself has no build step
+      # and no npm dependencies, so there is no package.json at the repo root).
+      - name: Install IMAP client + email parser
+        run: npm install --no-fund --no-audit imapflow mailparser
+      - name: Read inbox, analyse, ingest
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASSWORD: ${{ secrets.IMAP_PASSWORD }}
+          IMAP_PORT: ${{ vars.IMAP_PORT }}
+          IMAP_MAILBOX: ${{ vars.IMAP_MAILBOX }}
+          BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          BEDROCK_MODEL_IDS: ${{ vars.BEDROCK_MODEL_IDS }}
+        run: node scripts/email-ingest.mjs

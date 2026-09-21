@@ -98,17 +98,38 @@ const CREATE_STATEMENTS = [
      FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE CASCADE,
      FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS segments (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filtersJson TEXT, createdAt TEXT)`,
+  // Email-reply intelligence (Feature 2): one row per ingested reply, matched to a contact by sender email.
+  `CREATE TABLE IF NOT EXISTS replies (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, contactId INTEGER, fromEmail TEXT, fromName TEXT, subject TEXT,
+     receivedAt TEXT, sentiment TEXT, interestSignal TEXT, questionsAsked INTEGER DEFAULT 0, summary TEXT,
+     draftReply TEXT, messageId TEXT UNIQUE, model TEXT, createdAt TEXT NOT NULL,
+     FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE SET NULL)`,
+  // Email-campaign stats (Feature 3): one row per send, upserted by (name, sentDate).
+  `CREATE TABLE IF NOT EXISTS campaigns (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, sentDate TEXT, segment TEXT,
+     recipients INTEGER DEFAULT 0, delivered INTEGER DEFAULT 0, opened INTEGER DEFAULT 0, clicked INTEGER DEFAULT 0,
+     replied INTEGER DEFAULT 0, bounced INTEGER DEFAULT 0, unsubscribed INTEGER DEFAULT 0,
+     createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, UNIQUE(name, sentDate))`,
   `CREATE INDEX IF NOT EXISTS idx_activities_contactId ON activities(contactId)`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_contactId ON tasks(contactId)`,
   `CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done)`,
   `CREATE INDEX IF NOT EXISTS idx_contact_tags_contactId ON contact_tags(contactId)`,
   `CREATE INDEX IF NOT EXISTS idx_contacts_stage ON contacts(stage)`,
+  `CREATE INDEX IF NOT EXISTS idx_replies_contactId ON replies(contactId)`,
+  `CREATE INDEX IF NOT EXISTS idx_replies_receivedAt ON replies(receivedAt)`,
 ];
 
 /* new columns added to tables that may already exist from an earlier deploy */
 const COLUMN_MIGRATIONS = [
   ['contacts', 'updatedBy', 'TEXT'],
   ['activities', 'createdBy', 'TEXT'],
+  // Feature 1 — AI relationship enrichment, stored on the contact.
+  ['contacts', 'aiScore', 'INTEGER'],
+  ['contacts', 'aiBand', 'TEXT'],
+  ['contacts', 'aiSummary', 'TEXT'],
+  ['contacts', 'aiNextStep', 'TEXT'],
+  ['contacts', 'aiAnalyzedAt', 'TEXT'],
+  ['contacts', 'aiModel', 'TEXT'],
 ];
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
@@ -196,5 +217,15 @@ export async function tagsByContact(env, ids) {
       map.get(r.cid).push({ id: r.id, name: r.name, colour: r.colour });
     }
   }
+  return map;
+}
+
+/** Latest reply per contact → Map(contactId -> reply row). Newest wins. */
+export async function latestRepliesByContact(env) {
+  const map = new Map();
+  const res = await env.DB.prepare(
+    `SELECT * FROM replies WHERE contactId IS NOT NULL ORDER BY receivedAt ASC, id ASC`,
+  ).all();
+  for (const r of res.results || []) map.set(r.contactId, r); // last (newest) write wins
   return map;
 }
