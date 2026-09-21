@@ -502,6 +502,67 @@ body {
 .quiet-score .qn { font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; font-size:1rem; color:#f59e0b; font-variant-numeric:tabular-nums; line-height:1; }
 .quiet-score .ql { font-size:.6rem; color:var(--ink-3); text-transform:uppercase; }
 
+/* =========================================================================
+   CRM upgrade — preview banner, forms, inline editors, activity timeline
+   ========================================================================= */
+
+/* preview-mode banner (only when the database is unreachable) */
+.preview-banner { flex:none; display:flex; align-items:center; gap:.55rem; padding:.55rem 1rem;
+  background:#fffbeb; border-bottom:1px solid #fde68a; color:#92651a; font-size:var(--fs-caption); }
+.preview-banner b { color:#7c4a12; font-weight:700; }
+.preview-banner svg { color:#d97706; flex:none; }
+
+/* danger button */
+.btn-danger { color:#fff; background:linear-gradient(135deg,#ef4444,#dc2626); box-shadow:0 8px 18px -8px rgba(239,68,68,.7); }
+.btn-danger:hover { transform:translateY(-1px); box-shadow:0 12px 22px -8px rgba(239,68,68,.85); }
+.btn:disabled { opacity:.5; cursor:not-allowed; transform:none !important; box-shadow:none; }
+
+/* ---------- form inputs (Add / Edit drawer) ---------- */
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:.6rem .75rem; }
+.form-row { display:flex; flex-direction:column; gap:.25rem; min-width:0; }
+.form-row--wide { grid-column:1 / -1; }
+.form-label { font-size:var(--fs-caption); font-weight:600; color:var(--ink-3); }
+.field-input { width:100%; font-size:var(--fs-body); color:var(--ink); background:#fff; border:1px solid var(--line);
+  border-radius:9px; padding:.42rem .55rem; font-family:inherit; transition:border-color .15s ease, box-shadow .15s ease; }
+.field-input:focus { outline:none; border-color:#c7c9f5; box-shadow:0 0 0 3px rgba(79,70,229,.13); }
+select.field-input { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .4rem center; padding-right:1.6rem; }
+textarea.field-input { resize:vertical; min-height:3.2rem; line-height:1.5; }
+@media (max-width:520px){ .form-grid { grid-template-columns:1fr; } }
+
+/* ---------- activity timeline ---------- */
+.activity-add { background:#f8fafc; border:1px solid var(--line-soft); border-radius:10px; padding:.6rem; margin-bottom:.75rem; }
+.timeline { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.1rem; }
+.tl-item { display:flex; gap:.6rem; padding:.5rem 0; position:relative; }
+.tl-item:not(:last-child)::before { content:''; position:absolute; left:11px; top:1.9rem; bottom:-.4rem; width:1.5px; background:var(--line); }
+.tl-dot { width:23px; height:23px; border-radius:999px; flex:none; display:grid; place-items:center; color:var(--c1);
+  background:#eef2ff; box-shadow:0 0 0 3px #fff; z-index:1; }
+.tl-top { display:flex; align-items:baseline; gap:.5rem; }
+.tl-type { font-size:var(--fs-caption); font-weight:700; color:var(--ink); }
+.tl-date { font-size:var(--fs-caption); color:var(--ink-3); }
+.tl-summary { font-size:var(--fs-body); color:var(--ink-2); line-height:1.45; margin:.1rem 0 0; }
+
+/* confirm-delete bar */
+.confirm-bar { display:flex; flex-direction:column; gap:.5rem; width:100%; }
+.confirm-bar .flex { justify-content:flex-end; }
+
+/* ---------- inline quick-edit controls in the table ---------- */
+.cell-edit { font-family:inherit; font-size:var(--fs-caption); color:var(--ink); background:#fff; border:1px solid transparent;
+  border-radius:8px; padding:.2rem .4rem; max-width:100%; cursor:pointer;
+  transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
+.cell-edit:hover { border-color:var(--line); background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+.cell-edit:focus { outline:none; border-color:#c7c9f5; box-shadow:0 0 0 2px rgba(79,70,229,.15); }
+select.cell-edit { appearance:none; padding-right:1.15rem;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .25rem center; }
+.stage-edit { font-weight:600; color:#334155; padding-left:1.1rem; position:relative;
+  background-color:color-mix(in srgb, var(--c) 12%, #fff);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 24%, #fff),
+             inset .5rem 0 0 -.32rem var(--c); }
+.stage-edit:hover { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, #fff), inset .5rem 0 0 -.32rem var(--c), 0 1px 3px rgba(15,23,42,.1); }
+.owner-edit { color:var(--ink-2); }
+.date-edit { font-variant-numeric:tabular-nums; }
+.date-edit.is-overdue { color:#dc2626; font-weight:600; border-color:#fecaca; }
+.date-edit::-webkit-calendar-picker-indicator { opacity:.5; cursor:pointer; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
   .card:hover { transform:none; }
@@ -528,11 +589,21 @@ body {
             </div>
           </div>
 
-          <button id="upload-btn" class="btn btn-primary order-2 sm:order-4" type="button">
-            <i data-lucide="upload" class="size-4"></i>
-            <span class="hidden sm:inline">Upload Sheet</span>
-            <span class="sm:hidden">Upload</span>
-          </button>
+          <div class="order-2 flex items-center gap-2 sm:order-4">
+            <button id="add-btn" class="btn btn-primary" type="button" title="Add a new contact">
+              <i data-lucide="user-plus" class="size-4"></i>
+              <span class="hidden sm:inline">Add contact</span>
+              <span class="sm:hidden">Add</span>
+            </button>
+            <button id="upload-btn" class="btn btn-quiet" type="button" title="Import contacts from Excel or CSV">
+              <i data-lucide="upload" class="size-4"></i>
+              <span class="hidden md:inline">Import</span>
+            </button>
+            <a id="export-btn" class="btn btn-quiet" href="/api/export" title="Export all contacts as CSV">
+              <i data-lucide="download" class="size-4"></i>
+              <span class="hidden md:inline">Export</span>
+            </a>
+          </div>
 
           <div class="search order-3 w-full sm:ml-auto sm:w-64">
             <span class="search-icon"><i data-lucide="search" class="size-4"></i></span>
@@ -549,6 +620,12 @@ body {
              class="-mb-px flex items-center overflow-x-auto"></nav>
       </div>
     </header>
+
+    <!-- shown only when the live database is unreachable -->
+    <div id="preview-banner" class="preview-banner" hidden>
+      <i data-lucide="database" class="size-4"></i>
+      <span><b>Preview mode</b> — the database isn't connected, so this is the read-only sample. Editing, adding and importing are turned off.</span>
+    </div>
 
     <!-- ============ the only scrolling area ============ -->
     <main id="view" class="app-main">

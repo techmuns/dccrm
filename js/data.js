@@ -15,7 +15,7 @@ import { headerKey, tidy, parseDate, daysFromToday, countBy, rank } from './util
 
 /* Dimensions that get a stable colour assignment at load time. The Overview tab
    uses the first four; the rest are registered now so later tabs inherit them. */
-const COLOURED_DIMENSIONS = ['stage', 'entityType', 'country', 'source', 'relationshipOwner', 'vehicle', 'role'];
+export const COLOURED_DIMENSIONS = ['stage', 'entityType', 'country', 'source', 'relationshipOwner', 'vehicle', 'role'];
 
 /** Canonical spelling for a stage, matched case- and space-insensitively. */
 function canonicalStage(value) {
@@ -57,6 +57,32 @@ export function mapHeaders(headers) {
   return { map, matched: [...matched], unmatched };
 }
 
+/**
+ * Normalise ONE already-field-shaped record (from the API, or a mapped sheet row)
+ * into the contact shape every tab reads: canonical stage/opt-in, parsed dates, a
+ * search blob — plus id/createdAt/updatedAt when the source (the database) has them.
+ */
+export function normalizeContact(row) {
+  const contact = {};
+  for (const field of FIELDS) {
+    const value = row[field];
+    contact[field] = value == null ? ''
+      : (field === 'lastContact' || field === 'nextActionDate' ? value : tidy(value));
+  }
+  if (row.id != null) contact.id = row.id;
+  if (row.createdAt) contact.createdAt = row.createdAt;
+  if (row.updatedAt) contact.updatedAt = row.updatedAt;
+
+  contact.stage = canonicalStage(contact.stage);
+  contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);
+  contact.lastContactAt = parseDate(contact.lastContact);
+  contact.nextActionAt = parseDate(contact.nextActionDate);
+  contact.lastContact = contact.lastContactAt ? toISO(contact.lastContactAt) : tidy(contact.lastContact);
+  contact.nextActionDate = contact.nextActionAt ? toISO(contact.nextActionAt) : tidy(contact.nextActionDate);
+  contact.searchBlob = SEARCH_FIELDS.map((f) => contact[f]).join(' ').toLowerCase();
+  return contact;
+}
+
 /** Turn raw sheet rows into normalised contacts. Throws if no column can be recognised. */
 export function normalizeRows(rawRows) {
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -77,29 +103,17 @@ export function normalizeRows(rawRows) {
   for (const raw of rows) {
     if (!raw || typeof raw !== 'object') continue;
 
-    const contact = {};
-    for (const field of FIELDS) contact[field] = '';
-
+    // Map this row's headers onto field names (first non-blank column wins).
+    const fieldObj = {};
     for (const [header, field] of Object.entries(map)) {
       const value = raw[header];
-      if (contact[field] === '' && value != null && value !== '') {
-        contact[field] = field === 'lastContact' || field === 'nextActionDate' ? value : tidy(value);
-      }
+      if (fieldObj[field] == null && value != null && value !== '') fieldObj[field] = value;
     }
 
-    contact.stage = canonicalStage(contact.stage);
-    contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);
-
-    // Dates are parsed once, here, and kept alongside the display value.
-    contact.lastContactAt = parseDate(contact.lastContact);
-    contact.nextActionAt = parseDate(contact.nextActionDate);
-    contact.lastContact = contact.lastContactAt ? toISO(contact.lastContactAt) : tidy(contact.lastContact);
-    contact.nextActionDate = contact.nextActionAt ? toISO(contact.nextActionAt) : tidy(contact.nextActionDate);
+    const contact = normalizeContact(fieldObj);
 
     // A row with nothing identifying in it is noise, not a contact.
     if (!contact.fullName && !contact.email && !contact.organisation) continue;
-
-    contact.searchBlob = SEARCH_FIELDS.map((f) => contact[f]).join(' ').toLowerCase();
     contacts.push(contact);
   }
 

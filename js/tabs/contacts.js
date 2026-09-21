@@ -22,6 +22,7 @@ import { openDrawer } from '../components/drawer.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
 import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
 import { takeContactsPreset } from '../nav.js';
+import * as store from '../store.js';
 
 /** Stage-split items covering EVERYONE in the selection, in pipeline order. */
 function stageSplitItems(contacts) {
@@ -33,6 +34,60 @@ function stageSplitItems(contacts) {
   return order
     .filter((name) => counts.get(name))
     .map((name) => ({ name, value: counts.get(name), color: colorOf('stage', name) }));
+}
+
+/** Push a single-field change to the database, optimistically. */
+async function quickEdit(contact, patch) {
+  const res = await store.updateContact(contact.id, patch);
+  if (!res.ok) toast(res.error || 'Could not save that change.', 'warn');
+}
+
+/** A compact <select> chip for Stage, coloured to match the stage. */
+function stageEditor(contact) {
+  const sel = h('select', {
+    class: 'cell-edit stage-edit', 'aria-label': 'Stage',
+    style: `--c:${colorOf('stage', contact.stage)}`,
+  }, ALL_STAGES.map((st) => h('option', { value: st, text: st, selected: st === contact.stage ? '' : null })));
+  if (!contact.stage) sel.prepend(h('option', { value: '', text: '—', selected: '' }));
+  stopBubbling(sel);
+  sel.addEventListener('change', () => {
+    sel.style.setProperty('--c', colorOf('stage', sel.value));
+    quickEdit(contact, { stage: sel.value });
+  });
+  return sel;
+}
+
+/** A compact <select> for the Relationship owner, options drawn from the data. */
+function ownerEditor(contact) {
+  const owners = new Set(store.getState().contacts.map((c) => tidy(c.relationshipOwner)).filter(Boolean));
+  if (contact.relationshipOwner) owners.add(contact.relationshipOwner);
+  const sel = h('select', { class: 'cell-edit owner-edit', 'aria-label': 'Relationship owner' }, [
+    h('option', { value: '', text: '—', selected: contact.relationshipOwner ? null : '' }),
+    ...[...owners].sort((a, b) => a.localeCompare(b)).map((o) =>
+      h('option', { value: o, text: o, selected: o === contact.relationshipOwner ? '' : null })),
+  ]);
+  stopBubbling(sel);
+  sel.addEventListener('change', () => quickEdit(contact, { relationshipOwner: sel.value }));
+  return sel;
+}
+
+/** A date input for Next action date; turns red when overdue. */
+function nextDateEditor(contact) {
+  const overdue = contact.nextActionAt && contact.nextActionAt < startOfToday();
+  const input = h('input', {
+    class: `cell-edit date-edit${overdue ? ' is-overdue' : ''}`, type: 'date',
+    value: contact.nextActionDate || '', 'aria-label': 'Next action date',
+  });
+  stopBubbling(input);
+  input.addEventListener('change', () => quickEdit(contact, { nextActionDate: input.value }));
+  return input;
+}
+
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
+/* keep clicks on an inline editor from opening the row's drawer */
+function stopBubbling(el) {
+  for (const type of ['click', 'mousedown', 'keydown']) el.addEventListener(type, (e) => e.stopPropagation());
 }
 
 export function render(container) {
@@ -90,13 +145,16 @@ export function render(container) {
     { key: 'country', label: 'Country', cellClass: 'col-country',
       sortValue: (r) => r.country?.toLowerCase(), render: (r) => textCell(r.country) },
     { key: 'stage', label: 'Stage', cellClass: 'col-stage',
-      sortValue: (r) => STAGE_ORDER.indexOf(r.stage), render: (r) => chipCell('stage', r.stage) },
+      sortValue: (r) => STAGE_ORDER.indexOf(r.stage),
+      render: (r) => (store.isLive() ? stageEditor(r) : chipCell('stage', r.stage)) },
     { key: 'relationshipOwner', label: 'Owner', cellClass: 'col-owner',
-      sortValue: (r) => r.relationshipOwner?.toLowerCase(), render: (r) => textCell(r.relationshipOwner) },
+      sortValue: (r) => r.relationshipOwner?.toLowerCase(),
+      render: (r) => (store.isLive() ? ownerEditor(r) : textCell(r.relationshipOwner)) },
     { key: 'lastContact', label: 'Last contact', cellClass: 'col-last', defaultSortDir: 'desc',
       sortValue: (r) => r.lastContactAt, render: (r) => dateCell(r.lastContactAt) },
     { key: 'nextActionDate', label: 'Next action', cellClass: 'col-next', defaultSortDir: 'asc',
-      sortValue: (r) => r.nextActionAt, render: (r) => dateCell(r.nextActionAt, { markOverdue: true }) },
+      sortValue: (r) => r.nextActionAt,
+      render: (r) => (store.isLive() ? nextDateEditor(r) : dateCell(r.nextActionAt, { markOverdue: true })) },
   ];
 
   const tableHost = h('div', { class: 'flex flex-1 min-h-0' });
