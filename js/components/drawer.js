@@ -73,6 +73,96 @@ const mailto = (e) => (e ? `<a href="mailto:${encodeURIComponent(e)}">${escapeHt
 const tel = (p) => (p ? `<a href="tel:${escapeHtml(p.replace(/[^\d+]/g, ''))}">${escapeHtml(p)}</a>` : '');
 const wa = (n) => (n ? `<a href="https://wa.me/${n.replace(/[^\d]/g, '')}" target="_blank" rel="noopener">${escapeHtml(n)}</a>` : '');
 
+/* ---------- AI insight panel (Feature 1) + reply cards (Feature 2) ---------- */
+
+const BAND_COLOR = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#06b6d4' };
+const SENTIMENT_COLOR = { Positive: '#10b981', Neutral: '#94a3b8', Negative: '#ef4444' };
+
+function aiPanel(contact) {
+  const scored = contact.aiScore != null;
+  const band = contact.aiBand || (scored ? (contact.aiScore >= 70 ? 'Hot' : contact.aiScore >= 40 ? 'Warm' : 'Cold') : '');
+  const c = BAND_COLOR[band] || '#94a3b8';
+
+  const refresh = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' },
+    [icon('sparkles', 'size-3.5'), h('span', { text: scored ? 'Refresh AI' : 'Score with AI' })]);
+  refresh.addEventListener('click', async () => {
+    refresh.disabled = true;
+    const r = await store.enrichContact(contact.id);
+    refresh.disabled = false;
+    if (!r.ok) {
+      if (r.code === 'no-bedrock') toast('Set the BEDROCK_API_KEY secret to switch AI on.', 'warn');
+      else toast(r.error || 'Could not score this contact.', 'error');
+      return;
+    }
+    toast('Scored with AI.', 'good');
+    renderView(r.contact);   // re-render with the fresh score
+  });
+
+  const head = h('div', { class: 'ai-panel-head' }, [
+    scored
+      ? h('div', { class: 'ai-score', style: `--c:${c}` }, [h('div', { class: 'n', text: String(contact.aiScore) }), h('div', { class: 'l', text: 'interest' })])
+      : null,
+    scored
+      ? h('span', { class: 'cat-chip', style: `--c:${c}` }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: band })])
+      : h('span', { class: 't-caption', text: 'Not scored yet.' }),
+    h('div', { class: 'ml-auto' }, [refresh]),
+  ]);
+  const rows = [];
+  if (contact.aiSummary) rows.push(h('p', { class: 'ai-panel-summary', text: contact.aiSummary }));
+  if (contact.aiNextStep) rows.push(h('div', { class: 'ai-next' }, [icon('arrow-right', 'size-3.5'), h('span', { text: contact.aiNextStep })]));
+  if (contact.aiAnalyzedAt) rows.push(h('div', { class: 't-caption mt-1', text: `Last analysed ${formatDate(new Date(contact.aiAnalyzedAt))}` }));
+
+  return h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('brain-circuit', 'size-3.5'), 'AI insight']),
+    h('div', { class: 'ai-panel' }, [head, ...rows]),
+  ]);
+}
+
+async function copyDraft(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text;
+    document.body.append(ta); ta.select();
+    try { document.execCommand('copy'); } catch { /* ignore */ }
+    ta.remove();
+  }
+  btn.classList.add('done');
+  btn.querySelector('span').textContent = 'Copied';
+  setTimeout(() => { btn.classList.remove('done'); btn.querySelector('span').textContent = 'Copy reply'; }, 1600);
+}
+
+function replyCard(r) {
+  const c = SENTIMENT_COLOR[r.sentiment] || '#94a3b8';
+  const draft = tidy(r.draftReply);
+  let draftBox = null;
+  if (draft) {
+    const copyBtn = h('button', { class: 'copy-btn', type: 'button' }, [icon('copy', 'size-3.5'), h('span', { text: 'Copy reply' })]);
+    copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyDraft(draft, copyBtn); });
+    draftBox = h('div', { class: 'draft-box' }, [
+      h('div', { class: 'dh' }, [icon('sparkles', 'size-3'), 'AI-drafted reply — review before sending']),
+      h('div', { text: draft }), copyBtn,
+    ]);
+  }
+  return h('div', { class: 'reply-card' }, [
+    h('div', { class: 'reply-card-top' }, [
+      h('span', { class: 'cat-chip', style: `--c:${c}` }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: r.sentiment || 'Neutral' })]),
+      r.questionsAsked ? h('span', { class: 't-caption', text: `${r.questionsAsked} question${r.questionsAsked === 1 ? '' : 's'}` }) : null,
+      h('span', { class: 't-caption', style: 'margin-left:auto', text: r.receivedAt ? formatDate(new Date(r.receivedAt)) : '' }),
+    ]),
+    r.subject ? h('div', { class: 'reply-subject', text: r.subject }) : null,
+    r.summary ? h('p', { class: 'reply-summary', text: r.summary }) : null,
+    draftBox,
+  ]);
+}
+
+function renderReplies(host, replies) {
+  const sectionEl = host.closest('.drawer-section');   // toggle the whole section, not just the host
+  if (!replies.length) { host.replaceChildren(); if (sectionEl) sectionEl.style.display = 'none'; return; }
+  if (sectionEl) sectionEl.style.display = '';
+  host.replaceChildren(...replies.map(replyCard));
+  refreshIcons(host);
+}
+
 function renderView(contact) {
   refs.head.replaceChildren(
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
@@ -99,8 +189,13 @@ function renderView(contact) {
     h('h3', {}, [icon('history', 'size-3.5'), 'Activity']),
     h('div', { class: 'activity-host' }, [h('p', { class: 't-caption', text: 'Loading…' })]),
   ]);
+  const repliesSection = h('div', { class: 'drawer-section', style: 'display:none' }, [
+    h('h3', {}, [icon('mail', 'size-3.5'), 'Recent replies']),
+    h('div', { class: 'replies-host' }),
+  ]);
 
   refs.body.replaceChildren(
+    store.isLive() ? aiPanel(contact) : null,
     section('Identity', 'user', [
       field('Full name', contact.fullName),
       field('Entity type', contact.entityType),
@@ -128,6 +223,7 @@ function renderView(contact) {
     section('Source', 'route', [field('Source / channel', contact.source), field('Referred by', contact.referredBy)]),
     contact.notes ? h('div', { class: 'drawer-section' }, [h('h3', {}, [icon('sticky-note', 'size-3.5'), 'Notes']),
       h('p', { class: 'drawer-note', text: contact.notes })]) : null,
+    store.isLive() ? repliesSection : null,
     store.isLive() ? tagsSection : null,
     store.isLive() ? tasksSection : null,
     activitySection,
@@ -156,6 +252,7 @@ function renderView(contact) {
       tags: tagsSection.querySelector('.tags-host'),
       tasks: tasksSection.querySelector('.tasks-host'),
       activity: activitySection.querySelector('.activity-host'),
+      replies: repliesSection.querySelector('.replies-host'),
     });
   } else {
     activitySection.querySelector('.activity-host').replaceChildren(
@@ -168,6 +265,7 @@ async function loadDetail(contact, hosts) {
   const detail = await store.getContactDetail(contact.id);
   renderTags(contact, hosts.tags, detail.tags || contact.tags || []);
   renderTasks(contact, hosts.tasks, detail.tasks || []);
+  if (hosts.replies) renderReplies(hosts.replies, detail.replies || []);
   renderActivityInto(contact, hosts.activity, detail.activities || []);
 }
 

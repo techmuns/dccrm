@@ -28,6 +28,7 @@ const state = {
   user: 'Team',
   tags: [],        // all tags {id,name,colour,count}
   segments: [],    // saved filter sets {id,name,filtersJson}
+  aiMeta: null,    // { analyzedAt, count, scored, withReplies } from the last insights fetch
 };
 
 export const getState = () => state;
@@ -223,9 +224,9 @@ export async function getContactDetail(id) {
   if (!isLive()) return { ok: false, preview: true, activities: [] };
   try {
     const data = await api(`/api/contacts/${id}`);
-    return { ok: true, contact: normalizeContact(data.contact), activities: data.activities || [], tasks: data.tasks || [], tags: data.tags || [] };
+    return { ok: true, contact: normalizeContact(data.contact), activities: data.activities || [], tasks: data.tasks || [], tags: data.tags || [], replies: data.replies || [] };
   } catch (err) {
-    return { ok: false, error: err.message, activities: [] };
+    return { ok: false, error: err.message, activities: [], replies: [] };
   }
 }
 
@@ -337,14 +338,74 @@ export async function bulkAction(payload) {
 }
 
 
+/* ---------- AI relationship enrichment (Feature 1) ---------- */
+
+/** Score ONE contact on demand (direct Bedrock call); update local state. */
+export async function enrichContact(id) {
+  if (!isLive()) return PREVIEW;
+  try {
+    const d = await api(`/api/contacts/${id}/enrich`, { method: 'POST' });
+    const confirmed = normalizeContact(d.contact);
+    ensureColours(confirmed);
+    const at = state.contacts.findIndex((c) => c.id === id);
+    if (at >= 0) state.contacts[at] = confirmed;
+    recomputeVisible(); emit();
+    return { ok: true, contact: confirmed, ai: d.ai };
+  } catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/** Kick off the BULK enrichment run on GitHub Actions (patient, no Worker timeout). */
+export async function refreshAllAi(scope = 'all') {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/ai/refresh-all', { method: 'POST', body: JSON.stringify({ scope }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/** The AI Insights feed (enrichment + latest replies), keyed by email. Caches meta. */
+export async function getInsights() {
+  if (!isLive()) return { insights: {}, analyzedAt: null };
+  try {
+    const d = await api('/api/insights');
+    state.aiMeta = { analyzedAt: d.analyzedAt, count: d.count, scored: d.scored, withReplies: d.withReplies };
+    return d;
+  } catch { return { insights: {}, analyzedAt: null }; }
+}
+
+/** Analysed email replies (Feature 2). qs e.g. '?contactId=5' or '?needsResponse=1'. */
+export async function listReplies(qs = '') {
+  if (!isLive()) return { replies: [] };
+  try { return await api(`/api/replies${qs}`); }
+  catch (err) { return { replies: [], error: err.message }; }
+}
+
+/* ---------- campaigns (Feature 3) ---------- */
+export async function listCampaigns() {
+  if (!isLive()) return [];
+  try { const d = await api('/api/campaigns'); return d.campaigns || []; }
+  catch { return []; }
+}
+export async function importCampaigns(rows) {
+  if (!isLive()) return { ok: false, error: 'Connect the database to import campaigns.' };
+  try { const d = await api('/api/campaigns/import', { method: 'POST', body: JSON.stringify({ campaigns: rows }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function deleteCampaign(id) {
+  if (!isLive()) return PREVIEW;
+  try { await api(`/api/campaigns/${id}`, { method: 'DELETE' }); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
 /* Keep only the writable/id fields when turning a normalised contact back into a
    plain payload for an optimistic re-normalise. */
 function toFieldObject(contact) {
   const out = { id: contact.id };
   for (const key of ['fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone',
     'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'referredBy',
-    'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes']) {
+    'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes',
+    // carry AI + tags so an optimistic inline edit doesn't momentarily drop them
+    'aiScore', 'aiBand', 'aiSummary', 'aiNextStep', 'aiAnalyzedAt', 'aiModel']) {
     out[key] = contact[key];
   }
+  out.tags = contact.tags;
   return out;
 }

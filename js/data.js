@@ -74,6 +74,13 @@ export function normalizeContact(row) {
   if (row.updatedAt) contact.updatedAt = row.updatedAt;
   if (row.updatedBy) contact.updatedBy = row.updatedBy;
   contact.tags = Array.isArray(row.tags) ? row.tags : [];
+  // AI relationship enrichment (Feature 1), carried through unchanged when present.
+  if (row.aiScore != null) contact.aiScore = row.aiScore;
+  if (row.aiBand) contact.aiBand = row.aiBand;
+  if (row.aiSummary) contact.aiSummary = row.aiSummary;
+  if (row.aiNextStep) contact.aiNextStep = row.aiNextStep;
+  if (row.aiAnalyzedAt) contact.aiAnalyzedAt = row.aiAnalyzedAt;
+  if (row.aiModel) contact.aiModel = row.aiModel;
 
   contact.stage = canonicalStage(contact.stage);
   contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);

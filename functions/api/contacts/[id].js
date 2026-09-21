@@ -19,7 +19,8 @@ export async function onRequestGet({ params, env }) {
     const activities = await env.DB.prepare('SELECT * FROM activities WHERE contactId = ? ORDER BY occurredAt DESC, id DESC').bind(id).all();
     const tasks = await env.DB.prepare('SELECT * FROM tasks WHERE contactId = ? ORDER BY done ASC, dueDate ASC, id DESC').bind(id).all();
     const tags = await env.DB.prepare('SELECT t.id, t.name, t.colour FROM contact_tags ct JOIN tags t ON t.id = ct.tagId WHERE ct.contactId = ? ORDER BY t.name').bind(id).all();
-    return json({ contact, activities: activities.results || [], tasks: tasks.results || [], tags: tags.results || [] });
+    const replies = await env.DB.prepare('SELECT * FROM replies WHERE contactId = ? ORDER BY receivedAt DESC, id DESC LIMIT 20').bind(id).all();
+    return json({ contact, activities: activities.results || [], tasks: tasks.results || [], tags: tags.results || [], replies: replies.results || [] });
   } catch (err) {
     return fail(`Could not read the contact: ${err.message}`, 500);
   }

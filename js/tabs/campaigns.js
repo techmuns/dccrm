@@ -42,7 +42,7 @@ export function render(container) {
   container.classList.add('tab-panel--fill');
   container.parentElement?.classList.add('view--fill');
 
-  const note = createSourceNote({ source: campaignsSource, accept: '.json,.csv,.xlsx,.xls', readFile: readTabularFile, noun: 'campaigns' });
+  const note = createSourceNote({ source: campaignsSource, accept: '.json,.csv,.xlsx,.xls', readFile: readTabularFile, noun: 'campaigns', liveLabel: 'Import campaigns…' });
 
   /* selected-campaign funnel */
   const funnel = createChartCard({
