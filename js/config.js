@@ -82,8 +82,8 @@ export const TABS = [
   { id: 'overview',   label: 'Overview',    icon: 'layout-dashboard', ready: true },
   { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
   { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
-  { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: false },
-  { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: false },
+  { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: true },
+  { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: true },
 ];
 
 export const STORAGE_KEY = 'dccrm.data.v1';

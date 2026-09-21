@@ -416,3 +416,66 @@ export function segmentedBarOption(items) {
     })),
   };
 }
+
+/**
+ * Simple multi-series line — used for the campaign engagement trend. Soft axes,
+ * rounded markers, a legend (built by the caller), and a rich axis tooltip that
+ * lists every series at the hovered point. Values are percentages by default.
+ */
+export function lineOption(categories, seriesList, { asPercent = true } = {}) {
+  const fmt = (v) => (v == null ? '—' : asPercent ? `${Math.round(v)}%` : formatNumber(v));
+  return {
+    animationDuration: 650,
+    animationEasing: 'cubicOut',
+    grid: { left: 6, right: 14, top: 12, bottom: 6, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      appendToBody: true,
+      backgroundColor: 'transparent',
+      borderWidth: 0,
+      padding: 0,
+      extraCssText: 'box-shadow:none;',
+      axisPointer: { type: 'line', lineStyle: { color: '#cbd5e1', width: 1, type: 'dashed' } },
+      formatter: (params) => {
+        const title = params[0]?.axisValueLabel || '';
+        const rows = params.map((p) => ({ label: `${p.marker ? '' : ''}${p.seriesName}`, value: fmt(p.value) }));
+        return (
+          `<div class="tip" style="--tip-accent:${params[0]?.color || '#4f46e5'}">` +
+            `<div class="tip-head"><span class="tip-dot"></span><span class="tip-title">${escapeHtml(title)}</span></div>` +
+            `<div class="tip-rows">${rows.map((r) => `<div class="tip-row"><span class="tip-key">${escapeHtml(r.label)}</span><span class="tip-val">${escapeHtml(String(r.value))}</span></div>`).join('')}</div>` +
+          `</div>`
+        );
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      boundaryGap: false,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: INK, fontFamily: FONT, fontSize: 11, hideOverlap: true },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: asPercent ? 100 : null,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: INK_SOFT, fontFamily: FONT, fontSize: 11, formatter: (v) => (asPercent ? `${v}%` : formatNumber(v)) },
+      splitLine: { lineStyle: { color: GRID, width: 1 } },
+    },
+    series: seriesList.map((s) => ({
+      name: s.name,
+      type: 'line',
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 8,
+      showSymbol: true,
+      lineStyle: { width: 3, color: s.color },
+      itemStyle: { color: s.color, borderColor: SURFACE, borderWidth: 2 },
+      emphasis: { focus: 'series', scale: 1.3 },
+      areaStyle: { color: withAlpha(s.color, 0.10) },
+      data: s.data,
+    })),
+  };
+}

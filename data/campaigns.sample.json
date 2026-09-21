@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Fund Commentary — February",
+    "sentDate": "2026-02-12",
+    "segment": "All investors",
+    "recipients": 1180,
+    "delivered": 1121,
+    "opened": 578,
+    "clicked": 165,
+    "replied": 106,
+    "bounced": 59,
+    "unsubscribed": 7
+  },
+  {
+    "name": "Q4 Fact Sheet — FPI focus",
+    "sentDate": "2026-03-05",
+    "segment": "FPI",
+    "recipients": 420,
+    "delivered": 403,
+    "opened": 244,
+    "clicked": 84,
+    "replied": 63,
+    "bounced": 17,
+    "unsubscribed": 2
+  },
+  {
+    "name": "Fund Commentary — March",
+    "sentDate": "2026-03-26",
+    "segment": "Family Office",
+    "recipients": 640,
+    "delivered": 608,
+    "opened": 352,
+    "clicked": 109,
+    "replied": 77,
+    "bounced": 32,
+    "unsubscribed": 3
+  },
+  {
+    "name": "Strategy Note — AMC desks",
+    "sentDate": "2026-04-18",
+    "segment": "AMC",
+    "recipients": 380,
+    "delivered": 369,
+    "opened": 232,
+    "clicked": 84,
+    "replied": 61,
+    "bounced": 11,
+    "unsubscribed": 1
+  },
+  {
+    "name": "Fund Commentary — May",
+    "sentDate": "2026-05-14",
+    "segment": "All investors",
+    "recipients": 1240,
+    "delivered": 1166,
+    "opened": 645,
+    "clicked": 186,
+    "replied": 124,
+    "bounced": 74,
+    "unsubscribed": 7
+  },
+  {
+    "name": "Half-Year Review — HNIs",
+    "sentDate": "2026-06-09",
+    "segment": "HNI",
+    "recipients": 520,
+    "delivered": 484,
+    "opened": 296,
+    "clicked": 99,
+    "replied": 73,
+    "bounced": 36,
+    "unsubscribed": 4
+  },
+  {
+    "name": "Fact Sheet — Mutual Funds",
+    "sentDate": "2026-07-02",
+    "segment": "Mutual Fund",
+    "recipients": 300,
+    "delivered": 294,
+    "opened": 192,
+    "clicked": 72,
+    "replied": 54,
+    "bounced": 6,
+    "unsubscribed": 1
+  },
+  {
+    "name": "Fund Commentary — July",
+    "sentDate": "2026-07-28",
+    "segment": "Family Office",
+    "recipients": 680,
+    "delivered": 653,
+    "opened": 408,
+    "clicked": 143,
+    "replied": 109,
+    "bounced": 27,
+    "unsubscribed": 3
+  },
+  {
+    "name": "Fund Commentary — August",
+    "sentDate": "2026-08-20",
+    "segment": "FPI",
+    "recipients": 460,
+    "delivered": 446,
+    "opened": 304,
+    "clicked": 120,
+    "replied": 87,
+    "bounced": 14,
+    "unsubscribed": 1
+  },
+  {
+    "name": "September Outlook — all",
+    "sentDate": "2026-09-10",
+    "segment": "All investors",
+    "recipients": 1300,
+    "delivered": 1235,
+    "opened": 819,
+    "clicked": 299,
+    "replied": 221,
+    "bounced": 65,
+    "unsubscribed": 7
+  }
+]
