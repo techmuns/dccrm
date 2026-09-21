@@ -1,16 +1,21 @@
 /**
  * functions/api/_lib.js — shared helpers for the CRM API (Cloudflare Pages Functions).
  * Underscore-prefixed, so Pages does not treat it as a route.
+ *
+ * Includes ensureSchema(): the database is self-initializing — on first run it
+ * creates any missing tables, migrates in new columns, and seeds sample data, so no
+ * manual SQL step is ever needed.
  */
+import { SEED_CONTACTS } from './_seed.js';
 
-/* The columns a client may write. id / createdAt / updatedAt are server-managed. */
+/* The columns a client may write on a contact. id / createdAt / updatedAt / updatedBy
+   are server-managed. */
 export const WRITABLE = [
   'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone',
   'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes',
 ];
 
-/* Field -> the sheet header name used for CSV export/import round-trips. */
 export const HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
   designation: 'Designation', email: 'Email', phone: 'Phone (display)', whatsapp: 'WhatsApp Number (E.164)',
@@ -19,6 +24,8 @@ export const HEADERS = {
   nextActionDate: 'Next Action Date', relationshipOwner: 'Relationship Owner', source: 'Source / Channel', notes: 'Notes',
 };
 
+export const TAG_PALETTE = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+
 export const json = (data, status = 200, extra = {}) =>
   new Response(JSON.stringify(data), {
     status,
@@ -26,24 +33,20 @@ export const json = (data, status = 200, extra = {}) =>
   });
 
 export const fail = (message, status = 400, extra = {}) => json({ error: message, ...extra }, status);
-
-/** 503 with a stable code the front-end uses to switch into read-only preview mode. */
 export const noDb = () => json({ error: 'Database not connected', code: 'no-database' }, 503);
-
 export const now = () => new Date().toISOString();
 
 const trim = (v) => (v == null ? '' : String(v).trim());
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/**
- * Clean a client payload down to writable fields.
- *   mode 'create' requires something identifying; 'patch' allows any subset.
- * Returns { values } or throws an Error with a friendly message.
- */
+/** Who is signed in, from the Cloudflare Access header — or "Team" before Access is on. */
+export function currentUser(request) {
+  const email = request.headers.get('Cf-Access-Authenticated-User-Email');
+  return email && email.trim() ? email.trim() : 'Team';
+}
+
 export function cleanPayload(body, mode = 'create') {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
-    throw new Error('Expected a JSON object of contact fields.');
-  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Expected a JSON object of contact fields.');
   const values = {};
   for (const key of WRITABLE) {
     if (!(key in body)) continue;
@@ -51,12 +54,11 @@ export function cleanPayload(body, mode = 'create') {
     if (key === 'email') v = v.toLowerCase();
     values[key] = v === '' ? null : v;
   }
-  if (values.email && !EMAIL_RE.test(values.email)) {
-    throw new Error(`"${values.email}" does not look like an email address.`);
-  }
+  if (values.email && !EMAIL_RE.test(values.email)) throw new Error(`"${values.email}" does not look like an email address.`);
   if (mode === 'create') {
-    const identifying = values.fullName || values.email || values.organisation;
-    if (!identifying) throw new Error('A contact needs at least a name, an email or an organisation.');
+    if (!(values.fullName || values.email || values.organisation)) {
+      throw new Error('A contact needs at least a name, an email or an organisation.');
+    }
   } else if (!Object.keys(values).length) {
     throw new Error('No editable fields were provided.');
   }
@@ -68,8 +70,131 @@ export async function readJson(request) {
   catch { throw new Error('The request body was not valid JSON.'); }
 }
 
-/** CSV-escape one value. */
 export const csvCell = (v) => {
   const s = v == null ? '' : String(v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
+
+/* ---------- self-initializing schema ---------- */
+
+let schemaReady = false;
+
+const CREATE_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS contacts (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, fullName TEXT, entityType TEXT, role TEXT, organisation TEXT,
+     designation TEXT, email TEXT UNIQUE, phone TEXT, whatsapp TEXT, whatsappOptIn TEXT, country TEXT, city TEXT,
+     vehicle TEXT, stage TEXT, referredBy TEXT, lastContact TEXT, nextAction TEXT, nextActionDate TEXT,
+     relationshipOwner TEXT, source TEXT, notes TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, updatedBy TEXT)`,
+  `CREATE TABLE IF NOT EXISTS activities (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, contactId INTEGER NOT NULL, type TEXT, summary TEXT, occurredAt TEXT,
+     createdBy TEXT, createdAt TEXT NOT NULL, FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS tasks (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, contactId INTEGER, title TEXT NOT NULL, dueDate TEXT,
+     done INTEGER NOT NULL DEFAULT 0, owner TEXT, createdBy TEXT, createdAt TEXT NOT NULL,
+     FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, colour TEXT)`,
+  `CREATE TABLE IF NOT EXISTS contact_tags (
+     contactId INTEGER NOT NULL, tagId INTEGER NOT NULL, PRIMARY KEY (contactId, tagId),
+     FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE CASCADE,
+     FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS segments (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filtersJson TEXT, createdAt TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_activities_contactId ON activities(contactId)`,
+  `CREATE INDEX IF NOT EXISTS idx_tasks_contactId ON tasks(contactId)`,
+  `CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(done)`,
+  `CREATE INDEX IF NOT EXISTS idx_contact_tags_contactId ON contact_tags(contactId)`,
+  `CREATE INDEX IF NOT EXISTS idx_contacts_stage ON contacts(stage)`,
+];
+
+/* new columns added to tables that may already exist from an earlier deploy */
+const COLUMN_MIGRATIONS = [
+  ['contacts', 'updatedBy', 'TEXT'],
+  ['activities', 'createdBy', 'TEXT'],
+];
+
+const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+
+async function addColumnIfMissing(env, table, col, decl) {
+  const info = await env.DB.prepare(`SELECT name FROM pragma_table_info('${table}')`).all();
+  if (!(info.results || []).some((c) => c.name === col)) {
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`).run();
+  }
+}
+
+async function seedContactsIfEmpty(env) {
+  const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM contacts').first();
+  if (n > 0) return;
+  const ts = '2026-09-01T00:00:00.000Z';
+  const cols = WRITABLE;
+  const stmt = (row) => env.DB.prepare(
+    `INSERT OR IGNORE INTO contacts (${cols.join(',')}, createdAt, updatedAt) VALUES (${cols.map(() => '?').join(',')}, ?, ?)`,
+  ).bind(...cols.map((c) => row[c] ?? null), ts, ts);
+  for (const group of chunk(SEED_CONTACTS, 50)) await env.DB.batch(group.map(stmt));
+}
+
+async function seedTagsIfEmpty(env) {
+  const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM tags').first();
+  if (n > 0) return;
+  const tags = [
+    ['VIP', TAG_PALETTE[4]], ['Warm intro', TAG_PALETTE[2]], ['Conference 2026', TAG_PALETTE[0]], ['Needs deck', TAG_PALETTE[3]],
+  ];
+  await env.DB.batch(tags.map(([name, colour]) =>
+    env.DB.prepare('INSERT OR IGNORE INTO tags (name, colour) VALUES (?, ?)').bind(name, colour)));
+}
+
+async function seedTasksIfEmpty(env) {
+  const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM tasks').first();
+  if (n > 0) return;
+  // Attach a few starter tasks to active-stage contacts so Follow-ups is alive.
+  const rows = await env.DB.prepare(
+    "SELECT id, relationshipOwner FROM contacts WHERE stage IN ('In Conversation','Interested','Meeting Scheduled') ORDER BY id LIMIT 4",
+  ).all();
+  const list = rows.results || [];
+  if (!list.length) return;
+  const day = (offset) => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + offset); return d.toISOString().slice(0, 10); };
+  const titles = ['Send the latest factsheet', 'Book the intro call', 'Share the audited track record', 'Follow up on fees'];
+  const offsets = [-2, 1, 4, 9];
+  const ts = now();
+  await env.DB.batch(list.map((c, i) =>
+    env.DB.prepare('INSERT INTO tasks (contactId, title, dueDate, done, owner, createdBy, createdAt) VALUES (?, ?, ?, 0, ?, ?, ?)')
+      .bind(c.id, titles[i % titles.length], day(offsets[i % offsets.length]), c.relationshipOwner || 'Team', 'Team', ts)));
+}
+
+async function seedSegmentsIfEmpty(env) {
+  const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM segments').first();
+  if (n > 0) return;
+  const seg = [
+    ['FPIs in conversation', JSON.stringify({ entityType: ['FPI'], stage: ['In Conversation'] })],
+    ['Family Offices', JSON.stringify({ entityType: ['Family Office'] })],
+  ];
+  await env.DB.batch(seg.map(([name, filtersJson]) =>
+    env.DB.prepare('INSERT INTO segments (name, filtersJson, createdAt) VALUES (?, ?, ?)').bind(name, filtersJson, now())));
+}
+
+/** Create/migrate/seed everything. Cheap and idempotent; cached per isolate. */
+export async function ensureSchema(env) {
+  if (schemaReady) return;
+  await env.DB.batch(CREATE_STATEMENTS.map((s) => env.DB.prepare(s)));
+  for (const [table, col, decl] of COLUMN_MIGRATIONS) await addColumnIfMissing(env, table, col, decl);
+  await seedContactsIfEmpty(env);
+  await seedTagsIfEmpty(env);
+  await seedTasksIfEmpty(env);
+  await seedSegmentsIfEmpty(env);
+  schemaReady = true;
+}
+
+/** Fetch tags for a set of contact ids → Map(contactId -> [{id,name,colour}]). */
+export async function tagsByContact(env, ids) {
+  const map = new Map();
+  if (!ids.length) return map;
+  for (const group of chunk(ids, 100)) {
+    const res = await env.DB.prepare(
+      `SELECT ct.contactId AS cid, t.id, t.name, t.colour FROM contact_tags ct
+       JOIN tags t ON t.id = ct.tagId WHERE ct.contactId IN (${group.map(() => '?').join(',')})`,
+    ).bind(...group).all();
+    for (const r of res.results || []) {
+      if (!map.has(r.cid)) map.set(r.cid, []);
+      map.get(r.cid).push({ id: r.id, name: r.name, colour: r.colour });
+    }
+  }
+  return map;
+}

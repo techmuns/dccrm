@@ -3,7 +3,7 @@
  * Returns { added, updated, skipped }. Rows without an email can't be matched, so
  * they are inserted as new (counted as added).
  */
-import { WRITABLE, json, fail, noDb, now, readJson } from './_lib.js';
+import { WRITABLE, json, fail, noDb, now, readJson, ensureSchema, currentUser } from './_lib.js';
 
 const chunk = (arr, n) => {
   const out = [];
@@ -25,7 +25,8 @@ const clean = (row) => {
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return noDb();
   let body;
-  try { body = await readJson(request); } catch (err) { return fail(err.message, 400); }
+  try { await ensureSchema(env); body = await readJson(request); } catch (err) { return fail(err.message, 400); }
+  const who = currentUser(request);
 
   const rows = Array.isArray(body) ? body : Array.isArray(body?.contacts) ? body.contacts : null;
   if (!rows) return fail('Expected { contacts: [ … ] }.', 400);
@@ -58,13 +59,13 @@ export async function onRequestPost({ request, env }) {
     const cols = WRITABLE.filter((c) => c in r);
     if (r.email && existing.has(r.email)) {
       // update by email
-      const setSql = [...cols.filter((c) => c !== 'email').map((c) => `${c} = ?`), 'updatedAt = ?'].join(', ');
-      const binds = [...cols.filter((c) => c !== 'email').map((c) => r[c]), ts, r.email];
+      const setSql = [...cols.filter((c) => c !== 'email').map((c) => `${c} = ?`), 'updatedAt = ?', 'updatedBy = ?'].join(', ');
+      const binds = [...cols.filter((c) => c !== 'email').map((c) => r[c]), ts, who, r.email];
       statements.push(env.DB.prepare(`UPDATE contacts SET ${setSql} WHERE email = ?`).bind(...binds));
       updated += 1;
     } else {
-      const allCols = [...cols, 'createdAt', 'updatedAt'];
-      const binds = [...cols.map((c) => r[c]), ts, ts];
+      const allCols = [...cols, 'createdAt', 'updatedAt', 'updatedBy'];
+      const binds = [...cols.map((c) => r[c]), ts, ts, who];
       statements.push(env.DB.prepare(
         `INSERT INTO contacts (${allCols.join(', ')}) VALUES (${allCols.map(() => '?').join(', ')})`,
       ).bind(...binds));

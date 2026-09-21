@@ -72,6 +72,8 @@ export function normalizeContact(row) {
   if (row.id != null) contact.id = row.id;
   if (row.createdAt) contact.createdAt = row.createdAt;
   if (row.updatedAt) contact.updatedAt = row.updatedAt;
+  if (row.updatedBy) contact.updatedBy = row.updatedBy;
+  contact.tags = Array.isArray(row.tags) ? row.tags : [];
 
   contact.stage = canonicalStage(contact.stage);
   contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);
@@ -79,7 +81,8 @@ export function normalizeContact(row) {
   contact.nextActionAt = parseDate(contact.nextActionDate);
   contact.lastContact = contact.lastContactAt ? toISO(contact.lastContactAt) : tidy(contact.lastContact);
   contact.nextActionDate = contact.nextActionAt ? toISO(contact.nextActionAt) : tidy(contact.nextActionDate);
-  contact.searchBlob = SEARCH_FIELDS.map((f) => contact[f]).join(' ').toLowerCase();
+  const tagNames = contact.tags.map((t) => t.name).join(' ');
+  contact.searchBlob = (SEARCH_FIELDS.map((f) => contact[f]).join(' ') + ' ' + tagNames).toLowerCase();
   return contact;
 }
 

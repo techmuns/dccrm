@@ -25,6 +25,9 @@ const state = {
   total: 0,
   loadedAt: null,
   notice: '',
+  user: 'Team',
+  tags: [],        // all tags {id,name,colour,count}
+  segments: [],    // saved filter sets {id,name,filtersJson}
 };
 
 export const getState = () => state;
@@ -82,10 +85,20 @@ export async function init() {
   try {
     const data = await api('/api/contacts?limit=100000');
     adoptLive(data);
+    await loadAux();
   } catch {
     await loadSampleFallback();
   }
   emit();
+}
+
+/** Load tags + saved segments (live only). */
+async function loadAux() {
+  try {
+    const [tagsRes, segRes] = await Promise.all([api('/api/tags'), api('/api/segments')]);
+    state.tags = tagsRes.tags || [];
+    state.segments = segRes.segments || [];
+  } catch { /* non-fatal */ }
 }
 
 /** Reload everything from the database (after an import or to refresh). */
@@ -102,6 +115,7 @@ function adoptLive(data) {
   assignColors(state.contacts);
   sortNewestFirst();
   state.total = data.total ?? state.contacts.length;
+  state.user = data.user || 'Team';
   state.mode = 'live';
   state.status = 'ready';
   state.error = '';
@@ -209,7 +223,7 @@ export async function getContactDetail(id) {
   if (!isLive()) return { ok: false, preview: true, activities: [] };
   try {
     const data = await api(`/api/contacts/${id}`);
-    return { ok: true, contact: normalizeContact(data.contact), activities: data.activities || [] };
+    return { ok: true, contact: normalizeContact(data.contact), activities: data.activities || [], tasks: data.tasks || [], tags: data.tags || [] };
   } catch (err) {
     return { ok: false, error: err.message, activities: [] };
   }
@@ -238,6 +252,90 @@ export async function importContacts(rows) {
 }
 
 export const exportUrl = () => '/api/export';
+
+/* ---------- tasks ---------- */
+export async function listTasks(params = '') {
+  if (!isLive()) return { ok: false, tasks: [] };
+  try { const d = await api(`/api/tasks${params}`); return { ok: true, tasks: d.tasks || [] }; }
+  catch (err) { return { ok: false, error: err.message, tasks: [] }; }
+}
+export async function createTask(task) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/tasks', { method: 'POST', body: JSON.stringify(task) }); return { ok: true, task: d.task }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function updateTask(id, patch) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(patch) }); return { ok: true, task: d.task }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function deleteTask(id) {
+  if (!isLive()) return PREVIEW;
+  try { await api(`/api/tasks/${id}`, { method: 'DELETE' }); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
+/* ---------- tags ---------- */
+async function refreshTags() { try { state.tags = (await api('/api/tags')).tags || []; } catch { /* ignore */ } }
+
+export async function createTag(name, colour) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/tags', { method: 'POST', body: JSON.stringify({ name, colour }) }); await refreshTags(); emit(); return { ok: true, tag: d.tag }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function deleteTag(id) {
+  if (!isLive()) return PREVIEW;
+  try {
+    await api(`/api/tags/${id}`, { method: 'DELETE' });
+    for (const c of state.contacts) c.tags = (c.tags || []).filter((t) => t.id !== id);
+    await refreshTags();
+    recomputeVisible(); emit();
+    return { ok: true };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+/** Add a tag to one contact (by id or new name); updates local state. */
+export async function addTagToContact(contactId, { tagId, name } = {}) {
+  if (!isLive()) return PREVIEW;
+  try {
+    const d = await api(`/api/contacts/${contactId}/tags`, { method: 'POST', body: JSON.stringify({ tagId, name }) });
+    const c = state.contacts.find((x) => x.id === contactId);
+    if (c) { c.tags = c.tags || []; if (!c.tags.some((t) => t.id === d.tag.id)) c.tags.push(d.tag); }
+    await refreshTags();
+    recomputeVisible(); emit();
+    return { ok: true, tag: d.tag };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+export async function removeTagFromContact(contactId, tagId) {
+  if (!isLive()) return PREVIEW;
+  try {
+    await api(`/api/contacts/${contactId}/tags?tagId=${tagId}`, { method: 'DELETE' });
+    const c = state.contacts.find((x) => x.id === contactId);
+    if (c) c.tags = (c.tags || []).filter((t) => t.id !== tagId);
+    await refreshTags();
+    recomputeVisible(); emit();
+    return { ok: true };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
+/* ---------- segments ---------- */
+export async function createSegment(name, filters) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/segments', { method: 'POST', body: JSON.stringify({ name, filters }) }); state.segments.unshift(d.segment); emit(); return { ok: true, segment: d.segment }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function deleteSegment(id) {
+  if (!isLive()) return PREVIEW;
+  try { await api(`/api/segments/${id}`, { method: 'DELETE' }); state.segments = state.segments.filter((s2) => s2.id !== id); emit(); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
+/* ---------- bulk ---------- */
+export async function bulkAction(payload) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/bulk', { method: 'POST', body: JSON.stringify(payload) }); await reload(); await loadAux(); emit(); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
 
 /* Keep only the writable/id fields when turning a normalised contact back into a
    plain payload for an optimistic re-normalise. */

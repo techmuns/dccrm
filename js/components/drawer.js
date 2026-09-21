@@ -87,6 +87,14 @@ function renderView(contact) {
       : dueDays === 0 ? ' · due today' : ` · in ${dueDays} day${dueDays === 1 ? '' : 's'}`}`
     : '';
 
+  const tagsSection = h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('tag', 'size-3.5'), 'Tags']),
+    h('div', { class: 'tags-host' }),
+  ]);
+  const tasksSection = h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('list-checks', 'size-3.5'), 'Tasks']),
+    h('div', { class: 'tasks-host' }),
+  ]);
   const activitySection = h('div', { class: 'drawer-section' }, [
     h('h3', {}, [icon('history', 'size-3.5'), 'Activity']),
     h('div', { class: 'activity-host' }, [h('p', { class: 't-caption', text: 'Loading…' })]),
@@ -120,6 +128,8 @@ function renderView(contact) {
     section('Source', 'route', [field('Source / channel', contact.source), field('Referred by', contact.referredBy)]),
     contact.notes ? h('div', { class: 'drawer-section' }, [h('h3', {}, [icon('sticky-note', 'size-3.5'), 'Notes']),
       h('p', { class: 'drawer-note', text: contact.notes })]) : null,
+    store.isLive() ? tagsSection : null,
+    store.isLive() ? tasksSection : null,
     activitySection,
   );
 
@@ -141,20 +151,135 @@ function renderView(contact) {
 
   refreshIcons(refs.head); refreshIcons(refs.body); refreshIcons(refs.foot);
 
-  if (store.isLive() && contact.id != null) loadActivity(contact, activitySection.querySelector('.activity-host'));
-  else activitySection.querySelector('.activity-host').replaceChildren(
-    h('p', { class: 't-caption', text: 'Activity history is available once the database is connected.' }));
+  if (store.isLive() && contact.id != null) {
+    loadDetail(contact, {
+      tags: tagsSection.querySelector('.tags-host'),
+      tasks: tasksSection.querySelector('.tasks-host'),
+      activity: activitySection.querySelector('.activity-host'),
+    });
+  } else {
+    activitySection.querySelector('.activity-host').replaceChildren(
+      h('p', { class: 't-caption', text: 'Tags, tasks and activity are available once the database is connected.' }));
+  }
 }
+
+/* fetch the contact's detail once, then fill tags / tasks / activity */
+async function loadDetail(contact, hosts) {
+  const detail = await store.getContactDetail(contact.id);
+  renderTags(contact, hosts.tags, detail.tags || contact.tags || []);
+  renderTasks(contact, hosts.tasks, detail.tasks || []);
+  renderActivityInto(contact, hosts.activity, detail.activities || []);
+}
+
+/* ---------- tags ---------- */
+function renderTags(contact, host, tags) {
+  const chips = tags.map((t) => h('span', { class: 'cat-chip removable', style: `--c:${t.colour || '#94a3b8'}` }, [
+    h('span', { class: 'dot' }), h('span', { class: 'lbl', text: t.name }),
+    h('button', { class: 'chip-x', type: 'button', 'aria-label': `Remove ${t.name}`, onClick: async () => {
+      const r = await store.removeTagFromContact(contact.id, t.id);
+      if (!r.ok) { toast(r.error || 'Could not remove tag.', 'warn'); return; }
+      renderTags(contact, host, (store.getState().contacts.find((c) => c.id === contact.id)?.tags) || []);
+    } }, [icon('x', 'size-3')]),
+  ]));
+
+  const input = h('input', { class: 'field-input tag-add-input', type: 'text', placeholder: 'Add or create a tag…', list: 'drawer-tag-list' });
+  const list = h('datalist', { id: 'drawer-tag-list' }, (store.getState().tags || []).map((t) => h('option', { value: t.name })));
+  const add = async () => {
+    const name = input.value.trim();
+    if (!name) return;
+    const r = await store.addTagToContact(contact.id, { name });
+    if (!r.ok) { toast(r.error || 'Could not add tag.', 'warn'); return; }
+    input.value = '';
+    renderTags(contact, host, (store.getState().contacts.find((c) => c.id === contact.id)?.tags) || []);
+  };
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  const go = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onClick: add }, [icon('plus', 'size-3.5')]);
+
+  host.replaceChildren(
+    chips.length ? h('div', { class: 'chip-wrap' }, chips) : h('p', { class: 't-caption', text: 'No tags yet.' }),
+    h('div', { class: 'flex gap-1 mt-2' }, [input, list, go]),
+  );
+  refreshIcons(host);
+}
+
+/* ---------- tasks ---------- */
+function renderTasks(contact, host, tasks) {
+  const list = h('ul', { class: 'task-list' });
+  const paint = (items) => {
+    list.replaceChildren(...(items.length ? items.map((t) => taskRow(contact, t, host)) : [h('li', { class: 't-caption text-slate-400 py-1', text: 'No tasks yet.' })]));
+    refreshIcons(list);
+  };
+  paint(tasks);
+  host.replaceChildren(addTaskForm(contact, host), list);
+  refreshIcons(host);
+}
+
+function taskRow(contact, task, host) {
+  const overdue = !task.done && task.dueDate && new Date(task.dueDate) < startOfToday();
+  const box = h('input', { type: 'checkbox' });
+  box.checked = !!task.done;
+  box.addEventListener('change', async () => {
+    const r = await store.updateTask(task.id, { done: box.checked });
+    if (!r.ok) { toast(r.error || 'Could not update.', 'warn'); box.checked = !box.checked; return; }
+    reloadTasks(contact, host);
+  });
+  return h('li', { class: `task-row${task.done ? ' is-done' : ''}` }, [
+    box,
+    h('div', { class: 'min-w-0 flex-1' }, [
+      h('div', { class: 'task-title', text: task.title }),
+      h('div', { class: 'task-meta' }, [
+        task.dueDate ? h('span', { class: overdue ? 'dt-date-overdue' : '', text: formatDate(new Date(task.dueDate)) }) : h('span', { class: 'dt-muted', text: 'No date' }),
+        task.owner ? h('span', { text: ` · ${task.owner}` }) : null,
+      ]),
+    ]),
+    h('button', { class: 'task-del', type: 'button', 'aria-label': 'Delete task', onClick: async () => {
+      const r = await store.deleteTask(task.id);
+      if (!r.ok) { toast(r.error || 'Could not delete.', 'warn'); return; }
+      reloadTasks(contact, host);
+    } }, [icon('trash-2', 'size-3.5')]),
+  ]);
+}
+
+async function reloadTasks(contact, host) {
+  const res = await store.listTasks(`?contactId=${contact.id}`);
+  renderTasks(contact, host, res.tasks || []);
+}
+
+function addTaskForm(contact, host) {
+  const title = h('input', { class: 'field-input flex-1', type: 'text', placeholder: 'New task…' });
+  const due = h('input', { class: 'field-input', type: 'date' });
+  const owner = h('input', { class: 'field-input', type: 'text', placeholder: 'Owner', list: 'drawer-owner-list' });
+  const ownerList = h('datalist', { id: 'drawer-owner-list' },
+    [...new Set(store.getState().contacts.map((c) => tidy(c.relationshipOwner)).filter(Boolean))].map((o) => h('option', { value: o })));
+  const add = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('plus', 'size-3.5'), 'Add']);
+  const submit = async () => {
+    const t = title.value.trim();
+    if (!t) { title.focus(); return; }
+    add.disabled = true;
+    const r = await store.createTask({ contactId: contact.id, title: t, dueDate: due.value || undefined, owner: owner.value.trim() || undefined });
+    add.disabled = false;
+    if (!r.ok) { toast(r.error || 'Could not add task.', 'error'); return; }
+    title.value = ''; due.value = ''; owner.value = '';
+    reloadTasks(contact, host);
+  };
+  add.addEventListener('click', submit);
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  return h('div', { class: 'activity-add' }, [
+    h('div', { class: 'flex gap-2' }, [title]),
+    h('div', { class: 'flex gap-2 mt-2' }, [due, owner, ownerList, add]),
+  ]);
+}
+
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 /* ---------- activity timeline ---------- */
 
 const ACTIVITY_TYPES = ['Note', 'Call', 'Email', 'Meeting', 'WhatsApp', 'Other'];
 const ACTIVITY_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'mail', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', Other: 'circle-dot' };
 
-async function loadActivity(contact, host) {
-  const detail = await store.getContactDetail(contact.id);
+function renderActivityInto(contact, host, activities) {
   const list = h('ul', { class: 'timeline' });
-  renderTimeline(list, detail.activities || []);
+  renderTimeline(list, activities);
   host.replaceChildren(addActivityForm(contact, list), list);
   refreshIcons(host);
 }

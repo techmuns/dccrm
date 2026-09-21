@@ -81,6 +81,11 @@ function renderChip(state) {
       h('span', { text: 'Live database' }),
       h('span', { class: 'hidden sm:inline', text: `· ${formatNumber(state.contacts.length)} contacts` }),
     ]));
+    el.chip.append(h('span', { class: 'chip chip--user', title: state.user === 'Team' ? 'Turn on Cloudflare Access to sign in your team' : `Signed in as ${state.user}` }, [
+      icon('user-round', 'size-3.5'),
+      h('span', { class: 'hidden md:inline', text: 'Signed in as ' }),
+      h('span', { class: 'chip-name', text: state.user }),
+    ]));
   }
   refreshIcons(el.chip);
 }

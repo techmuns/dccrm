@@ -7,8 +7,9 @@
  * DataTable and DetailDrawer as the Contacts tab.
  */
 import { PALETTE } from '../config.js';
-import { h, icon, refreshIcons } from '../ui.js';
-import { formatNumber } from '../util.js';
+import { card, h, icon, refreshIcons, toast } from '../ui.js';
+import { formatNumber, formatDate, tidy } from '../util.js';
+import * as store from '../store.js';
 import { createFilterBar } from '../components/filterbar.js';
 import { mountDataTable } from '../components/datatable.js';
 import { createChartCard } from '../components/chartcard.js';
@@ -103,7 +104,17 @@ export function render(container) {
     emptyMessage: 'Nothing to follow up here.',
   });
 
-  const topGrid = h('div', { class: 'grid grid-cols-1 gap-4' }, [weeks.el]);
+  /* Open tasks card (live only) — reminders alongside the Next-Action list */
+  const tasksCard = card({ title: 'Open tasks', subtitle: 'Reminders across the team, soonest due first.', iconName: 'list-checks', accent: PALETTE[2] });
+  const tasksHost = h('div', {});
+  tasksCard.content.append(tasksHost);
+
+  const topGrid = store.isLive()
+    ? h('div', { class: 'grid grid-cols-1 lg:grid-cols-12 gap-4' }, [
+        h('div', { class: 'lg:col-span-7 flex' }, [weeks.el]),
+        h('div', { class: 'lg:col-span-5 flex' }, [tasksCard.el]),
+      ])
+    : h('div', { class: 'grid grid-cols-1 gap-4' }, [weeks.el]);
 
   container.append(bucketRow, controls, filterBar.chipsEl, topGrid, tableHost);
   refreshIcons(container);
@@ -136,6 +147,42 @@ export function render(container) {
     return bucketLabel;
   }
 
+  async function loadTasks() {
+    if (!store.isLive()) return;
+    tasksCard.setState('ready');
+    const res = await store.listTasks('?open=1');
+    const tasks = res.tasks || [];
+    tasksCard.head.querySelector('.t-caption').textContent = tasks.length
+      ? `${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'}, soonest due first.` : 'No open tasks — all clear.';
+    if (!tasks.length) {
+      tasksHost.replaceChildren(h('p', { class: 't-caption py-3 text-center text-slate-400', text: 'Nothing on the list. Add tasks from a contact.' }));
+      return;
+    }
+    tasksHost.replaceChildren(h('ul', { class: 'task-list' }, tasks.map((t) => {
+      const overdue = t.dueDate && new Date(t.dueDate) < startOfToday();
+      const box = h('input', { type: 'checkbox' });
+      box.addEventListener('change', async () => {
+        const r = await store.updateTask(t.id, { done: true });
+        if (!r.ok) { toast(r.error || 'Could not update.', 'warn'); box.checked = false; return; }
+        loadTasks();
+      });
+      return h('li', { class: 'task-row' }, [
+        box,
+        h('div', { class: 'min-w-0 flex-1' }, [
+          h('div', { class: 'task-title', text: t.title }),
+          h('div', { class: 'task-meta' }, [
+            t.dueDate ? h('span', { class: overdue ? 'dt-date-overdue' : '', text: formatDate(new Date(t.dueDate)) }) : h('span', { class: 'dt-muted', text: 'No date' }),
+            t.contactName ? h('span', { text: ` · ${t.contactName}` }) : null,
+            t.owner ? h('span', { class: 'dt-muted', text: ` · ${t.owner}` }) : null,
+          ]),
+        ]),
+      ]);
+    })));
+    refreshIcons(tasksHost);
+  }
+
+  const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
   function update(state) {
     currentState = state;
     if (state.status === 'loading') { weeks.setState('loading'); table.setState('loading'); return; }
@@ -146,6 +193,7 @@ export function render(container) {
     }
     filterBar.setData(state.contacts);
     refresh();
+    loadTasks();
   }
 
   return {
