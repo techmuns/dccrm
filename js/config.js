@@ -80,8 +80,8 @@ export const SEARCH_FIELDS = [
    so the structure of the product is visible from day one. */
 export const TABS = [
   { id: 'overview',   label: 'Overview',    icon: 'layout-dashboard', ready: true },
-  { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: false },
-  { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: false },
+  { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
+  { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
   { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: false },
   { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: false },
 ];

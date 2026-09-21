@@ -9,6 +9,8 @@ import { TABS } from './config.js';
 import * as store from './store.js';
 import { registerTab, mountTabs, pushState } from './router.js';
 import { render as renderOverview } from './tabs/overview.js';
+import { render as renderContacts } from './tabs/contacts.js';
+import { render as renderFollowups } from './tabs/followups.js';
 import { comingSoon } from './tabs/coming-soon.js';
 import { parseSpreadsheet } from './upload.js';
 import { h, icon, refreshIcons, toast } from './ui.js';
@@ -27,16 +29,10 @@ const el = {
 /* ---------- tabs ---------- */
 
 registerTab('overview', { render: renderOverview });
+registerTab('contacts', { render: renderContacts });
+registerTab('followups', { render: renderFollowups });
 
 const SOON = {
-  contacts: {
-    blurb: 'The full list of everyone you know, searchable and filterable, with one clean profile per person.',
-    bullets: ['Search and filter', 'One profile per contact', 'Export a list'],
-  },
-  followups: {
-    blurb: 'What needs doing and when — overdue first, then this week, then the rest.',
-    bullets: ['Overdue and due soon', 'Grouped by owner', 'Mark as done'],
-  },
   campaigns: {
     blurb: 'Outreach you have sent, who opened it, and which conversations it started.',
     bullets: ['Email and WhatsApp', 'Who replied', 'What worked'],

@@ -369,3 +369,50 @@ export function barOption(items, { valueLabel = 'People' } = {}) {
     }],
   };
 }
+
+/**
+ * Segmented horizontal bar — one row split into coloured segments (the stage-split
+ * centrepiece on the Contacts tab). Each stage is its own stacked series so its
+ * colour stays consistent and each segment carries its own hover card. A 2px
+ * surface ring between segments reads as a gap, not a border.
+ */
+export function segmentedBarOption(items) {
+  const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
+
+  return {
+    animationDuration: 550,
+    animationEasing: 'cubicOut',
+    grid: { left: 0, right: 0, top: 6, bottom: 6, containLabel: false },
+    tooltip: {
+      ...tooltipBase,
+      formatter: (p) => hoverCard({
+        color: p.color,
+        title: p.seriesName,
+        rows: [
+          { label: 'People', value: formatNumber(p.value) },
+          { label: 'Share of selection', value: formatPercent(p.value, total) },
+        ],
+      }),
+    },
+    xAxis: { type: 'value', max: total, show: false },
+    yAxis: { type: 'category', data: [''], show: false },
+    series: items.map((item) => ({
+      name: item.name,
+      type: 'bar',
+      stack: 'split',
+      barWidth: 34,
+      itemStyle: { color: item.color, borderColor: SURFACE, borderWidth: 2, borderRadius: 4 },
+      emphasis: { focus: 'series', itemStyle: { shadowBlur: 12, shadowColor: 'rgba(15,23,42,.22)' } },
+      label: {
+        show: item.value / total >= 0.09,
+        position: 'inside',
+        formatter: () => formatNumber(item.value),
+        color: '#fff',
+        fontFamily: FONT,
+        fontSize: 12,
+        fontWeight: 700,
+      },
+      data: [item.value],
+    })),
+  };
+}

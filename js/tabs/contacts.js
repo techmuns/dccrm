@@ -1,0 +1,192 @@
+/**
+ * tabs/contacts.js — the contact universe with live filtering.
+ *
+ * The point of this screen: narrow the base by any dimension and instantly see how
+ * that group splits across the pipeline — who's in active conversation, who was
+ * contacted but never replied, who's never been reached. Filters + summary stay
+ * fixed at the top; only the table scrolls.
+ *
+ * Everything here is composed from shared pieces: the FilterBar, the DataTable, the
+ * DetailDrawer, the chart-card helper, and the Phase 1 data + colour layers.
+ */
+import { PALETTE, STAGE_ORDER, STAGE_DORMANT, ALL_STAGES } from '../config.js';
+import { h, icon, refreshIcons, toast } from '../ui.js';
+import { colorOf } from '../colors.js';
+import { countBy, formatNumber, formatPercent, tidy } from '../util.js';
+import { series } from '../data.js';
+import { contactsToCsv } from '../filters.js';
+import { createFilterBar } from '../components/filterbar.js';
+import { mountDataTable } from '../components/datatable.js';
+import { createChartCard } from '../components/chartcard.js';
+import { openDrawer } from '../components/drawer.js';
+import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
+import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
+
+/** Stage-split items covering EVERYONE in the selection, in pipeline order. */
+function stageSplitItems(contacts) {
+  const counts = countBy(contacts, 'stage');
+  const order = [
+    ...STAGE_ORDER, STAGE_DORMANT,
+    ...[...counts.keys()].filter((s) => !ALL_STAGES.includes(s)),
+  ];
+  return order
+    .filter((name) => counts.get(name))
+    .map((name) => ({ name, value: counts.get(name), color: colorOf('stage', name) }));
+}
+
+export function render(container) {
+  container.classList.add('tab-panel--fill');
+  container.parentElement?.classList.add('view--fill');
+
+  const filterBar = createFilterBar({
+    dimensions: [
+      { field: 'entityType',        label: 'Type',    icon: 'building-2' },
+      { field: 'stage',             label: 'Stage',   icon: 'git-branch' },
+      { field: 'country',           label: 'Country', icon: 'globe' },
+      { field: 'vehicle',           label: 'Vehicle', icon: 'briefcase' },
+      { field: 'source',            label: 'Source',  icon: 'route' },
+      { field: 'relationshipOwner', label: 'Owner',   icon: 'user-round' },
+    ],
+    toggles: [
+      { key: 'whatsappOptIn', label: 'WhatsApp opt-in only', icon: 'message-circle',
+        predicate: (c) => c.whatsappOptIn === 'Yes' },
+    ],
+    onChange: () => refresh(),
+  });
+
+  /* summary widgets */
+  const split = createChartCard({
+    title: 'How this selection splits by stage',
+    subtitle: 'Showing all contacts',
+    iconName: 'align-horizontal-distribute-center', accent: PALETTE[0], chartClass: 'chart--split',
+  });
+  const donut = createChartCard({
+    title: 'By type', subtitle: 'The current selection.',
+    iconName: 'chart-pie', accent: PALETTE[5], chartClass: 'chart--mini-donut',
+  });
+  const countries = createChartCard({
+    title: 'Top countries', subtitle: 'The current selection.',
+    iconName: 'globe', accent: PALETTE[2], chartClass: 'chart--mini-hbar',
+  });
+
+  const summary = h('div', { class: 'grid grid-cols-1 lg:grid-cols-12 gap-4' }, [
+    h('div', { class: 'lg:col-span-6 flex' }, [split.el]),
+    h('div', { class: 'lg:col-span-3 flex' }, [donut.el]),
+    h('div', { class: 'lg:col-span-3 flex' }, [countries.el]),
+  ]);
+
+  /* table */
+  const exportBtn = h('button', { class: 'btn btn-quiet', type: 'button' }, [icon('download', 'size-4'), h('span', { class: 'hidden sm:inline', text: 'Export CSV' })]);
+  exportBtn.addEventListener('click', exportCsv);
+
+  const columns = [
+    { key: 'fullName', label: 'Name', cellClass: 'col-name dt-name', defaultSortDir: 'asc',
+      sortValue: (r) => r.fullName?.toLowerCase(), render: nameCell },
+    { key: 'entityType', label: 'Type', cellClass: 'col-type',
+      sortValue: (r) => r.entityType, render: (r) => chipCell('entityType', r.entityType) },
+    { key: 'designation', label: 'Designation', cellClass: 'col-desig',
+      sortValue: (r) => r.designation?.toLowerCase(), render: (r) => textCell(r.designation) },
+    { key: 'country', label: 'Country', cellClass: 'col-country',
+      sortValue: (r) => r.country?.toLowerCase(), render: (r) => textCell(r.country) },
+    { key: 'stage', label: 'Stage', cellClass: 'col-stage',
+      sortValue: (r) => STAGE_ORDER.indexOf(r.stage), render: (r) => chipCell('stage', r.stage) },
+    { key: 'relationshipOwner', label: 'Owner', cellClass: 'col-owner',
+      sortValue: (r) => r.relationshipOwner?.toLowerCase(), render: (r) => textCell(r.relationshipOwner) },
+    { key: 'lastContact', label: 'Last contact', cellClass: 'col-last', defaultSortDir: 'desc',
+      sortValue: (r) => r.lastContactAt, render: (r) => dateCell(r.lastContactAt) },
+    { key: 'nextActionDate', label: 'Next action', cellClass: 'col-next', defaultSortDir: 'asc',
+      sortValue: (r) => r.nextActionAt, render: (r) => dateCell(r.nextActionAt, { markOverdue: true }) },
+  ];
+
+  const tableHost = h('div', { class: 'flex flex-1 min-h-0' });
+  const table = mountDataTable(tableHost, {
+    columns,
+    onRowClick: openDrawer,
+    title: 'Contacts',
+    subtitle: 'Click anyone to see their full profile.',
+    iconName: 'users',
+    accent: PALETTE[0],
+    actions: exportBtn,
+    defaultSort: { key: 'lastContact', dir: 'desc' },
+    emptyMessage: 'No contacts match these filters.',
+  });
+
+  container.append(filterBar.el, filterBar.chipsEl, summary, tableHost);
+  refreshIcons(container);
+
+  let currentState = null;
+  let filtered = [];
+
+  function exportCsv() {
+    if (!filtered.length) { toast('Nothing to export with these filters.', 'warn'); return; }
+    const csv = contactsToCsv(filtered);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: `dhamma-contacts-${stamp}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Exported ${formatNumber(filtered.length)} contacts to CSV.`, 'good');
+  }
+
+  /** Re-apply the filters to the current data and redraw everything. */
+  function refresh() {
+    if (!currentState || currentState.status !== 'ready') return;
+    const base = currentState.visible;              // already respects the global search
+    filtered = filterBar.apply(base);
+
+    const total = currentState.contacts.length;
+    split.setSubtitle(`Showing ${formatNumber(filtered.length)} of ${formatNumber(total)} contacts`);
+
+    if (!filtered.length) {
+      const msg = 'No contacts match these filters.';
+      split.setState('empty', { message: msg });
+      donut.setState('empty', { message: msg });
+      countries.setState('empty', { message: msg });
+      table.setRows([]);
+      return;
+    }
+
+    /* stage split — the centrepiece */
+    const splitItems = stageSplitItems(filtered);
+    split.draw(segmentedBarOption(splitItems), splitItems, { segmented: true, showShare: true, valueLabel: 'people' });
+
+    /* reactive donut + countries */
+    const byType = series(filtered, 'entityType', { foldOther: true });
+    donut.draw(donutOption(byType.data, { centerValue: formatNumber(filtered.length), centerLabel: 'selected' }), byType.data, { showShare: true, valueLabel: 'Investors' });
+
+    const byCountry = series(filtered, 'country', { limit: 7 });
+    countries.draw(hbarOption(byCountry.data, { valueLabel: 'People' }), byCountry.data, { valueLabel: 'People', showLegendValue: false });
+    countries.note(byCountry.hiddenCount ? `+${byCountry.hiddenCount} more ${byCountry.hiddenCount === 1 ? 'country' : 'countries'}` : '');
+
+    /* table */
+    table.setRows(filtered);
+  }
+
+  function update(state) {
+    currentState = state;
+    if (state.status === 'loading') {
+      split.setState('loading'); donut.setState('loading'); countries.setState('loading');
+      table.setState('loading');
+      return;
+    }
+    if (state.status === 'error') {
+      split.setState('error', { message: state.error });
+      donut.setState('error', { message: state.error });
+      countries.setState('error', { message: state.error });
+      table.setState('error', { message: state.error });
+      return;
+    }
+    filterBar.setData(state.contacts);
+    refresh();
+  }
+
+  return {
+    update,
+    destroy() {
+      container.parentElement?.classList.remove('view--fill');
+      split.destroy(); donut.destroy(); countries.destroy();
+      table.destroy();
+    },
+  };
+}
