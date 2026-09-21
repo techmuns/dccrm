@@ -102,6 +102,9 @@ export function render(container) {
       { field: 'vehicle',           label: 'Vehicle', icon: 'briefcase' },
       { field: 'source',            label: 'Source',  icon: 'route' },
       { field: 'relationshipOwner', label: 'Owner',   icon: 'user-round' },
+      { field: 'tag', label: 'Tag', icon: 'tag',
+        options: () => (store.getState().tags || []).map((t) => ({ value: t.name, count: t.count ?? 0, color: t.colour })),
+        test: (c, set) => (c.tags || []).some((t) => set.has(t.name)) },
     ],
     toggles: [
       { key: 'whatsappOptIn', label: 'WhatsApp opt-in only', icon: 'message-circle',
@@ -168,13 +171,107 @@ export function render(container) {
     actions: exportBtn,
     defaultSort: { key: 'lastContact', dir: 'desc' },
     emptyMessage: 'No contacts match these filters.',
+    selectable: store.isLive(),
+    onSelection: (ids) => { selectedIds = ids; renderBulkBar(); },
   });
 
-  container.append(filterBar.el, filterBar.chipsEl, summary, tableHost);
+  /* saved segments (quick chips) + a "save this view" control */
+  const segmentsRow = h('div', { class: 'segments-row' });
+  /* bulk-action bar (shown only when rows are selected) */
+  const bulkBar = h('div', { class: 'bulk-bar', hidden: true });
+
+  container.append(filterBar.el, segmentsRow, filterBar.chipsEl, summary, bulkBar, tableHost);
   refreshIcons(container);
 
   let currentState = null;
   let filtered = [];
+  let selectedIds = new Set();
+
+  /* ---------- saved segments ---------- */
+  function renderSegments() {
+    const segs = (currentState && currentState.segments) || [];
+    const children = segs.map((seg) => {
+      const chip = h('span', { class: 'segment-chip' }, [
+        h('button', { class: 'seg-apply', type: 'button', title: 'Apply this saved view',
+          onClick: () => { try { filterBar.setSelections(JSON.parse(seg.filtersJson || '{}')); } catch { /* ignore */ } } },
+          [icon('bookmark', 'size-3.5'), h('span', { text: seg.name })]),
+        store.isLive() ? h('button', { class: 'seg-del', type: 'button', 'aria-label': `Delete ${seg.name}`,
+          onClick: async () => { const r = await store.deleteSegment(seg.id); if (!r.ok) toast(r.error || 'Could not delete.', 'warn'); } }, [icon('x', 'size-3')]) : null,
+      ]);
+      return chip;
+    });
+    if (store.isLive()) {
+      children.push(h('button', { class: 'seg-save', type: 'button', title: 'Save the current filters as a segment',
+        onClick: saveSegment }, [icon('bookmark-plus', 'size-3.5'), h('span', { text: 'Save view' })]));
+    }
+    segmentsRow.replaceChildren(...children);
+    segmentsRow.hidden = !children.length;
+    refreshIcons(segmentsRow);
+  }
+
+  async function saveSegment() {
+    if (!filterBar.isActive()) { toast('Set some filters first, then save the view.', 'warn'); return; }
+    const name = (prompt('Name this segment:') || '').trim();
+    if (!name) return;
+    const res = await store.createSegment(name, filterBar.getFilterState());
+    if (!res.ok) { toast(res.error || 'Could not save.', 'error'); return; }
+    toast(`Saved segment “${name}”.`, 'good');
+  }
+
+  /* ---------- bulk actions ---------- */
+  async function doBulk(payload, label) {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const res = await store.bulkAction({ ...payload, ids });
+    if (!res.ok) { toast(res.error || 'Bulk action failed.', 'error'); return; }
+    toast(`${label} — ${formatNumber(res.affected || ids.length)} ${res.affected === 1 ? 'contact' : 'contacts'}.`, 'good');
+    table.clearSelection();
+  }
+
+  function exportSelected() {
+    const rows = (currentState?.contacts || []).filter((c) => selectedIds.has(c.id));
+    if (!rows.length) return;
+    const blob = new Blob(['﻿' + contactsToCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: `dhamma-contacts-selected-${new Date().toISOString().slice(0, 10)}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Exported ${formatNumber(rows.length)} selected contacts.`, 'good');
+  }
+
+  function renderBulkBar() {
+    const n = selectedIds.size;
+    bulkBar.hidden = n === 0;
+    if (!n) { bulkBar.replaceChildren(); return; }
+
+    const stageSel = h('select', { class: 'field-input bulk-select' }, [h('option', { value: '', text: 'Change stage…' }),
+      ...ALL_STAGES.map((s) => h('option', { value: s, text: s }))]);
+    stageSel.addEventListener('change', () => { if (stageSel.value) doBulk({ action: 'stage', value: stageSel.value }, `Stage → ${stageSel.value}`); });
+
+    const owners = [...new Set((currentState?.contacts || []).map((c) => tidy(c.relationshipOwner)).filter(Boolean))].sort();
+    const ownerSel = h('select', { class: 'field-input bulk-select' }, [h('option', { value: '', text: 'Assign owner…' }),
+      ...owners.map((o) => h('option', { value: o, text: o }))]);
+    ownerSel.addEventListener('change', () => { if (ownerSel.value) doBulk({ action: 'owner', value: ownerSel.value }, `Owner → ${ownerSel.value}`); });
+
+    const tagInput = h('input', { class: 'field-input bulk-tag', type: 'text', placeholder: 'Add tag…', list: 'bulk-tag-list' });
+    const tagList = h('datalist', { id: 'bulk-tag-list' }, (currentState?.tags || []).map((t) => h('option', { value: t.name })));
+    const tagGo = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('tag', 'size-3.5'), 'Add']);
+    const addTag = () => { const name = tagInput.value.trim(); if (name) { doBulk({ action: 'tag', name }, `Tagged “${name}”`); tagInput.value = ''; } };
+    tagGo.addEventListener('click', addTag);
+    tagInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTag(); });
+
+    bulkBar.replaceChildren(
+      h('span', { class: 'bulk-count' }, [h('b', { text: formatNumber(n) }), ' selected']),
+      stageSel, ownerSel,
+      h('div', { class: 'flex items-center gap-1' }, [tagInput, tagList, tagGo]),
+      h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onClick: exportSelected }, [icon('download', 'size-3.5'), 'Export']),
+      h('button', { class: 'btn btn-danger btn-sm', type: 'button', onClick: () => {
+        if (confirm(`Delete ${n} selected contact${n === 1 ? '' : 's'}? This cannot be undone.`)) doBulk({ action: 'delete' }, 'Deleted');
+      } }, [icon('trash-2', 'size-3.5'), 'Delete']),
+      h('button', { class: 'bulk-clear', type: 'button', text: 'Clear', onClick: () => table.clearSelection() }),
+    );
+    refreshIcons(bulkBar);
+  }
 
   function exportCsv() {
     if (!filtered.length) { toast('Nothing to export with these filters.', 'warn'); return; }
@@ -191,6 +288,7 @@ export function render(container) {
   /** Re-apply the filters to the current data and redraw everything. */
   function refresh() {
     if (!currentState || currentState.status !== 'ready') return;
+    renderSegments();
     const base = currentState.visible;              // already respects the global search
     filtered = filterBar.apply(base);
 

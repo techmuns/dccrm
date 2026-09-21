@@ -93,7 +93,7 @@ export function createFilterBar({ dimensions = [], toggles = [], onChange, debou
   /* ---------- options ---------- */
   function paintOptions(dim, host, query) {
     const q = query.trim().toLowerCase();
-    const all = filterOptions(contacts, dim.field);
+    const all = dim.options ? dim.options(contacts) : filterOptions(contacts, dim.field);
     const shown = q ? all.filter((o) => o.value.toLowerCase().includes(q)) : all;
     const chosen = selections.get(dim.field);
 
@@ -178,12 +178,18 @@ export function createFilterBar({ dimensions = [], toggles = [], onChange, debou
   /** Replace all selections with a preset { field: [values] } (used by cross-tab jumps). */
   function setSelections(preset) {
     for (const set of selections.values()) set.clear();
-    for (const [field, values] of Object.entries(preset || {})) {
-      const set = selections.get(field);
-      if (!set) continue;
-      for (const v of values) set.add(v);
-      updateCount(field);
+    for (const key of toggleState.keys()) toggleState.set(key, false);
+    for (const [key, val] of Object.entries(preset || {})) {
+      if (selections.has(key)) {
+        for (const v of (Array.isArray(val) ? val : [val])) selections.get(key).add(v);
+        updateCount(key);
+      } else if (toggleState.has(key)) {
+        toggleState.set(key, !!val);
+        const g = groups.get(`toggle:${key}`);
+        if (g) g.input.checked = !!val;
+      }
     }
+    for (const t of toggles) { const g = groups.get(`toggle:${t.key}`); if (g) g.input.checked = toggleState.get(t.key); }
     renderChips();
     announce();
   }
@@ -196,18 +202,37 @@ export function createFilterBar({ dimensions = [], toggles = [], onChange, debou
       contacts = next || [];
       // Drop any selected value that no longer exists in the data (e.g. after upload).
       for (const dim of dimensions) {
-        const present = new Set(contacts.map((c) => tidy(c[dim.field])));
-        const chosen = selections.get(dim.field);
-        for (const v of [...chosen]) if (!present.has(v)) chosen.delete(v);
+        if (!dim.test) {   // only prune plain-field dimensions against the data
+          const present = new Set(contacts.map((c) => tidy(c[dim.field])));
+          const chosen = selections.get(dim.field);
+          for (const v of [...chosen]) if (!present.has(v)) chosen.delete(v);
+        }
         updateCount(dim.field);
       }
       renderChips();
     },
     apply(list) {
-      const active = toggles.filter((t) => toggleState.get(t.key));
-      return applyFilters(list, Object.fromEntries(selections), active);
+      const activeToggles = toggles.filter((t) => toggleState.get(t.key));
+      const activeDims = dimensions.filter((d) => selections.get(d.field).size);
+      if (!activeDims.length && !activeToggles.length) return list;
+      return list.filter((c) => {
+        for (const d of activeDims) {
+          const set = selections.get(d.field);
+          const ok = d.test ? d.test(c, set) : set.has(tidy(c[d.field]));
+          if (!ok) return false;
+        }
+        for (const t of activeToggles) if (!t.predicate(c)) return false;
+        return true;
+      });
     },
-    isActive: () => [...selections.values()].some((s) => s.size) || [...toggleState.values()].some(Boolean),
+    isActive: () => [...selections.values()].some((s2) => s2.size) || [...toggleState.values()].some(Boolean),
+    /** Serialise dims + active toggles for saving a segment. */
+    getFilterState() {
+      const out = {};
+      for (const dim of dimensions) { const set = selections.get(dim.field); if (set.size) out[dim.field] = [...set]; }
+      for (const t of toggles) if (toggleState.get(t.key)) out[t.key] = true;
+      return out;
+    },
     clear,
   };
 }

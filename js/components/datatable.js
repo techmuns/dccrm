@@ -31,8 +31,13 @@ export function mountDataTable(container, {
   actions = null,
   defaultSort,          // { key, dir }
   emptyMessage = 'No matching contacts.',
+  selectable = false,
+  rowKey = (row) => row.id,
+  onSelection = null,
 }) {
   let rows = [];
+  const selected = new Set();
+  let selectAllBox = null;
   let sort = defaultSort || { key: columns.find((c) => c.sortable !== false)?.key, dir: 'desc' };
   let state = 'loading';
 
@@ -67,7 +72,7 @@ export function mountDataTable(container, {
 
   /* ---------- header ---------- */
   function buildHeader() {
-    headEl.replaceChildren(...columns.map((col) => {
+    const cells = columns.map((col) => {
       const sorted = sort.key === col.key;
       const cell = h('div', {
         class: `dt-cell ${col.cellClass || ''} dt-h ${col.sortable !== false ? 'sortable' : ''} ${sorted ? 'sorted ' + sort.dir : ''}`,
@@ -88,7 +93,15 @@ export function mountDataTable(container, {
         });
       }
       return cell;
-    }));
+    });
+    if (selectable) {
+      selectAllBox = h('input', { type: 'checkbox', 'aria-label': 'Select all' });
+      selectAllBox.addEventListener('click', (e) => e.stopPropagation());
+      selectAllBox.addEventListener('change', () => setAllSelected(selectAllBox.checked));
+      cells.unshift(h('div', { class: 'dt-cell col-check dt-h' }, [selectAllBox]));
+    }
+    headEl.replaceChildren(...cells);
+    refreshSelectAllUI();
     refreshIcons(headEl);
   }
 
@@ -116,14 +129,25 @@ export function mountDataTable(container, {
 
   /* ---------- windowed rendering ---------- */
   function renderRow(row) {
-    const node = h('div', { class: 'dt-row', role: 'row', tabindex: '0' },
-      columns.map((col) => {
-        const content = col.render ? col.render(row) : (row[col.key] ?? '');
-        return h('div', {
-          class: `dt-cell ${col.cellClass || ''} ${col.align === 'right' ? 'num' : ''}`,
-          style: col.align === 'right' ? 'text-align:right' : '',
-        }, [content]);
-      }));
+    const cells = columns.map((col) => {
+      const content = col.render ? col.render(row) : (row[col.key] ?? '');
+      return h('div', {
+        class: `dt-cell ${col.cellClass || ''} ${col.align === 'right' ? 'num' : ''}`,
+        style: col.align === 'right' ? 'text-align:right' : '',
+      }, [content]);
+    });
+    if (selectable) {
+      const key = rowKey(row);
+      const box = h('input', { type: 'checkbox' });
+      box.checked = selected.has(key);
+      const stop = (e) => e.stopPropagation();
+      box.addEventListener('click', stop);
+      box.addEventListener('change', () => { toggleRow(key, box.checked); });
+      const cell = h('div', { class: 'dt-cell col-check' }, [box]);
+      cell.addEventListener('click', stop);
+      cells.unshift(cell);
+    }
+    const node = h('div', { class: `dt-row${selectable && selected.has(rowKey(row)) ? ' is-selected' : ''}`, role: 'row', tabindex: '0' }, cells);
     const open = () => onRowClick?.(row);
     node.addEventListener('click', open);
     node.addEventListener('keydown', (e) => {
@@ -183,6 +207,11 @@ export function mountDataTable(container, {
     // clamp it to the new content height so the view never ends up past the end.
     const maxScroll = Math.max(0, rows.length * ROW_HEIGHT - viewport.clientHeight);
     if (viewport.scrollTop > maxScroll) viewport.scrollTop = maxScroll;
+    if (selectable) {
+      const present = new Set(rows.map(rowKey));
+      for (const k of [...selected]) if (!present.has(k)) selected.delete(k);
+      refreshSelectAllUI();
+    }
     renderWindow();
   }
 
@@ -194,12 +223,32 @@ export function mountDataTable(container, {
 
   setOverlay('loading');
 
+  function emitSelection() { onSelection?.(new Set(selected)); }
+  function refreshSelectAllUI() {
+    if (!selectAllBox) return;
+    const n = rows.filter((r) => selected.has(rowKey(r))).length;
+    selectAllBox.checked = n > 0 && n === rows.length;
+    selectAllBox.indeterminate = n > 0 && n < rows.length;
+  }
+  function setAllSelected(on) {
+    for (const r of rows) { const k = rowKey(r); if (on) selected.add(k); else selected.delete(k); }
+    renderWindow(); refreshSelectAllUI(); emitSelection();
+  }
+  function toggleRow(key, on) {
+    if (on) selected.add(key); else selected.delete(key);
+    // reflect on the visible row without a full rebuild
+    renderWindow(); refreshSelectAllUI(); emitSelection();
+  }
+  function clearSelection() { selected.clear(); renderWindow(); refreshSelectAllUI(); emitSelection(); }
+
   return {
     el,
     setRows,
     setState,
     getRows: () => rows.slice(),
     getSort: () => ({ ...sort }),
+    getSelected: () => new Set(selected),
+    clearSelection,
     destroy() { resizeObserver.disconnect(); el.remove(); },
   };
 }

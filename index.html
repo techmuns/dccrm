@@ -563,6 +563,65 @@ select.cell-edit { appearance:none; padding-right:1.15rem;
 .date-edit.is-overdue { color:#dc2626; font-weight:600; border-color:#fecaca; }
 .date-edit::-webkit-calendar-picker-indicator { opacity:.5; cursor:pointer; }
 
+/* =========================================================================
+   Final CRM features — tasks, tags, saved segments, bulk actions, team identity
+   ========================================================================= */
+
+/* signed-in-as chip */
+.chip--user { color:#475569; background:#f1f5f9; border-color:#e2e8f0; }
+
+/* selection column + selected row */
+.col-check { width:38px; flex:none; display:flex; align-items:center; justify-content:center; }
+.col-check input { width:16px; height:16px; accent-color:var(--c1); cursor:pointer; }
+.dt-row.is-selected { background:#eef2ff; }
+.dt-row.is-selected:hover { background:#e6ebfe; }
+
+/* saved segments */
+.segments-row { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; }
+.segment-chip { display:inline-flex; align-items:center; border:1px solid #e0e7ff; background:#eef2ff; border-radius:999px; overflow:hidden; }
+.seg-apply { display:inline-flex; align-items:center; gap:.35rem; border:0; background:none; cursor:pointer; padding:.28rem .3rem .28rem .6rem;
+  font-size:var(--fs-caption); font-weight:600; color:#4338ca; }
+.seg-apply:hover { color:#3730a3; }
+.seg-del { display:grid; place-items:center; width:22px; height:26px; border:0; background:none; color:#818cf8; cursor:pointer; }
+.seg-del:hover { color:#4f46e5; background:rgba(99,102,241,.12); }
+.seg-save { display:inline-flex; align-items:center; gap:.35rem; border:1px dashed #c7d2fe; background:#fff; border-radius:999px;
+  padding:.28rem .6rem; font-size:var(--fs-caption); font-weight:600; color:#6366f1; cursor:pointer; }
+.seg-save:hover { background:#f5f7ff; border-color:#a5b4fc; }
+
+/* bulk-action bar */
+.bulk-bar { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; background:#0f172a; color:#fff; border-radius:12px;
+  padding:.5rem .7rem; box-shadow:0 10px 24px -12px rgba(15,23,42,.6); }
+.bulk-count { font-size:var(--fs-body); margin-right:.15rem; }
+.bulk-count b { font-variant-numeric:tabular-nums; }
+.bulk-bar .field-input { background:#1e293b; color:#fff; border-color:#334155; width:auto; }
+.bulk-bar .field-input::placeholder { color:#94a3b8; }
+.bulk-select { width:11rem; flex:0 0 auto; }
+.bulk-tag { width:8.5rem; flex:0 0 auto; }
+.btn-sm { padding:.34rem .6rem; font-size:var(--fs-caption); border-radius:9px; }
+.bulk-bar .btn-quiet { background:#1e293b; color:#e2e8f0; box-shadow:inset 0 0 0 1px #334155; }
+.bulk-bar .btn-quiet:hover { color:#fff; box-shadow:inset 0 0 0 1px #475569; }
+.bulk-clear { margin-left:auto; border:0; background:none; color:#94a3b8; font-size:var(--fs-caption); font-weight:600; cursor:pointer; }
+.bulk-clear:hover { color:#fff; }
+
+/* removable tag chips (drawer) */
+.chip-wrap { display:flex; flex-wrap:wrap; gap:.4rem; }
+.cat-chip.removable { padding-right:.2rem; }
+.chip-x { display:grid; place-items:center; width:17px; height:17px; margin-left:.1rem; border:0; border-radius:999px;
+  background:color-mix(in srgb, var(--c) 20%, #fff); color:#334155; cursor:pointer; }
+.chip-x:hover { background:color-mix(in srgb, var(--c) 38%, #fff); }
+.tag-add-input { max-width:14rem; }
+
+/* task list (drawer + follow-ups) */
+.task-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.task-row { display:flex; align-items:flex-start; gap:.55rem; padding:.5rem 0; border-bottom:1px solid var(--line-soft); }
+.task-row:last-child { border-bottom:0; }
+.task-row input[type=checkbox] { width:16px; height:16px; margin-top:.1rem; accent-color:var(--c3); cursor:pointer; flex:none; }
+.task-title { font-size:var(--fs-body); color:var(--ink); line-height:1.35; }
+.task-meta { font-size:var(--fs-caption); color:var(--ink-3); margin-top:.1rem; }
+.task-row.is-done .task-title { text-decoration:line-through; color:var(--ink-3); }
+.task-del { border:0; background:none; color:#cbd5e1; cursor:pointer; padding:.15rem; flex:none; }
+.task-del:hover { color:#ef4444; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
   .card:hover { transform:none; }

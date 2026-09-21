@@ -1,11 +1,12 @@
 /**
  * /api/export — every contact as a CSV download, using the sheet's own header names.
  */
-import { WRITABLE, HEADERS, noDb, fail, csvCell } from './_lib.js';
+import { WRITABLE, HEADERS, noDb, fail, csvCell, ensureSchema } from './_lib.js';
 
 export async function onRequestGet({ env }) {
   if (!env.DB) return noDb();
   try {
+    await ensureSchema(env);
     const rows = await env.DB.prepare('SELECT * FROM contacts ORDER BY fullName COLLATE NOCASE').all();
     const header = WRITABLE.map((f) => csvCell(HEADERS[f] || f)).join(',');
     const lines = (rows.results || []).map((r) => WRITABLE.map((f) => csvCell(r[f])).join(','));
