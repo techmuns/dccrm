@@ -251,13 +251,17 @@ body {
    Built on the Phase 1 tokens above; nothing here redefines them.
    ========================================================================= */
 
-/* fill-height tabs: only the table body scrolls, not the page (desktop) */
+/* fill-height tabs: give the table a comfortable height that never collapses under
+   the charts above it. It grows to fill on tall screens; on shorter ones the floor
+   keeps it usable and the page scrolls when charts + table exceed the viewport. */
 .app-main > div { display:flex; flex-direction:column; min-height:100%; }
 .tab-panel--fill { min-height:0; }
 @media (min-width:1024px) {
   .view--fill { height:100%; }
   .tab-panel--fill { flex:1 1 auto; }
-  .tab-panel--fill .dt-card { flex:1 1 auto; min-height:0; }
+  /* min-height (not 0) is the fix: the charts otherwise consume all the flex space and
+     the table bottoms out at .dt-viewport's 240px floor, hidden below the fold. */
+  .tab-panel--fill .dt-card { flex:1 1 auto; min-height:clamp(360px, 62vh, 760px); }
 }
 
 /* ---------- category chip (one colour per category, reused everywhere) ---------- */
