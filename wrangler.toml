@@ -16,3 +16,10 @@ compatibility_date = "2024-09-01"
 binding = "DB"                 # do not rename — the API reads env.DB
 database_name = "dccrm"
 database_id = "01e845b3-8664-40d5-b218-3ee77df831ba"
+
+# Non-secret vars: which repo holds the GitHub Action the app triggers (via
+# repository_dispatch) for bulk AI enrichment. Secrets (BEDROCK_API_KEY, GHA_SECRET,
+# GITHUB_DISPATCH_TOKEN, …) are NOT set here — add those as encrypted secrets.
+[vars]
+GH_OWNER = "techmuns"
+GH_REPO = "dccrm"
