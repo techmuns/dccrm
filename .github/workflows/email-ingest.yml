@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       # Only the IMAP path needs these; installed here (the app itself has no build step
       # and no npm dependencies, so there is no package.json at the repo root).
       - name: Install IMAP client + email parser
