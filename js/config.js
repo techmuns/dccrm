@@ -19,28 +19,32 @@ export const PALETTE = [
 export const NEUTRAL = '#94a3b8';   // everything past slot 8, and "Other"
 export const SURFACE = '#ffffff';   // card surface — also the gap colour between marks
 
-/* Pipeline, in order. Dormant is a real stage but sits outside the funnel. */
+/* Dhamma's real fundraising pipeline, in funnel order. Hot and Dormant are real
+   statuses that sit OUTSIDE the funnel (a priority flag and a parked flag). */
 export const STAGE_ORDER = [
-  'Not Contacted',
-  'Contacted',
-  'In Conversation',
-  'Interested',
-  'Meeting Scheduled',
-  'Onboarded',
+  'Cold',
+  'Network',
+  'Qualified',
+  'In Diligence',
+  'Committed',
+  'Funded',
 ];
-export const STAGE_DORMANT = 'Dormant';
-export const ALL_STAGES = [...STAGE_ORDER, STAGE_DORMANT];
+export const STAGE_HOT = 'Hot';         // out-of-pipeline priority
+export const STAGE_DORMANT = 'Dormant'; // out-of-pipeline parked
+export const STAGE_FUNDED = 'Funded';   // the "won" stage (money in)
+/* Every selectable stage, in display order: the funnel, then the two side statuses. */
+export const ALL_STAGES = [...STAGE_ORDER, STAGE_HOT, STAGE_DORMANT];
 
-/* Stages that count as "actively talking". */
-export const ACTIVE_STAGES = ['In Conversation', 'Interested', 'Meeting Scheduled'];
+/* Stages that count as "actively working the relationship" (not Cold, Funded or parked). */
+export const ACTIVE_STAGES = ['Network', 'Qualified', 'In Diligence', 'Committed', 'Hot'];
 
 /* The normalised contact shape. Order matters for table views in later tabs. */
 export const FIELDS = [
   'fullName', 'entityType', 'role', 'organisation', 'designation',
-  'email', 'phone', 'whatsapp', 'whatsappOptIn',
-  'country', 'city', 'vehicle', 'stage', 'referredBy',
+  'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
+  'country', 'city', 'vehicle', 'stage', 'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate',
-  'relationshipOwner', 'source', 'notes',
+  'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
 
 /* Sheet header -> field. Keys are headers reduced to lowercase letters+digits only,
@@ -68,12 +72,19 @@ export const HEADER_MAP = {
   relationshipowner: 'relationshipOwner', owner: 'relationshipOwner', accountowner: 'relationshipOwner', assignedto: 'relationshipOwner',
   sourcechannel: 'source', source: 'source', channel: 'source', leadsource: 'source',
   notes: 'notes', note: 'notes', comments: 'notes', remarks: 'notes',
+  // Dhamma working-copy columns
+  altphone: 'altPhone', alternatephone: 'altPhone', alternativephone: 'altPhone', secondaryphone: 'altPhone', phonealt: 'altPhone',
+  tier: 'tier',
+  priority: 'priority',
+  signaltags: 'signal', signal: 'signal', signals: 'signal',
+  roughnotesforraghav: 'roughNotes', roughnotes: 'roughNotes', roughnote: 'roughNotes',
 };
 
 /* Fields searched by the header search box. */
 export const SEARCH_FIELDS = [
   'fullName', 'organisation', 'designation', 'email', 'country', 'city',
   'stage', 'entityType', 'relationshipOwner', 'source', 'vehicle', 'notes', 'referredBy',
+  'tier', 'priority', 'signal', 'roughNotes',
 ];
 
 /* Tab bar. Only 'overview' is live in Phase 1; the rest render the coming-soon shell

@@ -8,7 +8,7 @@
  */
 import {
   HEADER_MAP, FIELDS, SEARCH_FIELDS, ALL_STAGES, STAGE_ORDER,
-  STAGE_DORMANT, ACTIVE_STAGES, NEUTRAL,
+  STAGE_DORMANT, STAGE_HOT, STAGE_FUNDED, ACTIVE_STAGES, NEUTRAL,
 } from './config.js';
 import { registerDimension, colorOf, resetColors } from './colors.js';
 import { headerKey, tidy, parseDate, daysFromToday, countBy, rank } from './util.js';
@@ -24,6 +24,14 @@ function canonicalStage(value) {
   const key = headerKey(raw);
   const match = ALL_STAGES.find((stage) => headerKey(stage) === key);
   return match || raw; // an unknown stage is kept as written rather than dropped
+}
+
+/** Fix known spelling slips in Entity Type (e.g. the sheet's "Fmaily Office"); else keep as written. */
+const ENTITY_TYPE_FIXES = { fmailyoffice: 'Family Office', familyofice: 'Family Office', famioffice: 'Family Office' };
+function canonicalEntityType(value) {
+  const v = tidy(value);
+  if (!v) return '';
+  return ENTITY_TYPE_FIXES[headerKey(v)] || v;
 }
 
 /** "Yes" / "true" / "1" / "y" -> true; blank stays blank so we can tell "no" from "unknown". */
@@ -83,6 +91,7 @@ export function normalizeContact(row) {
   if (row.aiModel) contact.aiModel = row.aiModel;
 
   contact.stage = canonicalStage(contact.stage);
+  contact.entityType = canonicalEntityType(contact.entityType);
   contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);
   contact.lastContactAt = parseDate(contact.lastContact);
   contact.nextActionAt = parseDate(contact.nextActionDate);
@@ -164,20 +173,20 @@ export function applySearch(contacts, query) {
 /** The four honest numbers across the top. */
 export function headlineNumbers(contacts) {
   let active = 0;
-  let onboarded = 0;
+  let funded = 0;
   let dueThisWeek = 0;
   let overdue = 0;
 
   for (const c of contacts) {
     if (ACTIVE_STAGES.includes(c.stage)) active += 1;
-    if (c.stage === 'Onboarded') onboarded += 1;
+    if (c.stage === STAGE_FUNDED) funded += 1;
     const days = daysFromToday(c.nextActionAt);
     if (days != null) {
       if (days >= 0 && days <= 7) dueThisWeek += 1;
       else if (days < 0) overdue += 1;
     }
   }
-  return { total: contacts.length, active, onboarded, dueThisWeek, overdue };
+  return { total: contacts.length, active, funded, dueThisWeek, overdue };
 }
 
 /** Counts per pipeline stage, in pipeline order. Dormant is reported separately. */
@@ -190,11 +199,15 @@ export function pipelineStages(contacts) {
     share: total ? (counts.get(name) || 0) / total : 0,
     color: colorOf('stage', name),
   }));
-  // Any stage the sheet uses that isn't part of the standard pipeline.
+  // Anything outside the funnel: the two real side-statuses (Hot, Dormant) surfaced
+  // on their own, plus any other stage value the data happens to contain.
   const extra = [...counts.keys()].filter((name) => !STAGE_ORDER.includes(name));
+  const hot = counts.get(STAGE_HOT) || 0;
   const dormant = counts.get(STAGE_DORMANT) || 0;
-  const outsideTotal = extra.reduce((sum, name) => sum + counts.get(name), 0);
-  return { stages, dormant, outsideTotal, outsideNames: extra };
+  const otherNames = extra.filter((name) => name !== STAGE_HOT && name !== STAGE_DORMANT);
+  const otherTotal = otherNames.reduce((sum, name) => sum + (counts.get(name) || 0), 0);
+  const outsideTotal = extra.reduce((sum, name) => sum + (counts.get(name) || 0), 0);
+  return { stages, hot, dormant, otherTotal, otherNames, outsideTotal, outsideNames: extra };
 }
 
 /**

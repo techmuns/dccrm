@@ -240,11 +240,14 @@ export async function logActivity(id, activity) {
   }
 }
 
-/** Bulk upsert by email. `rows` are already field-shaped (mapped from a sheet). */
-export async function importContacts(rows) {
+/**
+ * Bulk import. `rows` are already field-shaped (mapped from a sheet).
+ * mode 'merge' (default) updates/adds; 'replace' wipes the CRM first.
+ */
+export async function importContacts(rows, mode = 'merge') {
   if (!isLive()) return PREVIEW;
   try {
-    const result = await api('/api/import', { method: 'POST', body: JSON.stringify({ contacts: rows }) });
+    const result = await api('/api/import', { method: 'POST', body: JSON.stringify({ contacts: rows, mode }) });
     await reload();
     return { ok: true, ...result };
   } catch (err) {
@@ -399,9 +402,9 @@ export async function deleteCampaign(id) {
    plain payload for an optimistic re-normalise. */
 function toFieldObject(contact) {
   const out = { id: contact.id };
-  for (const key of ['fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone',
-    'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'referredBy',
-    'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes',
+  for (const key of ['fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone', 'altPhone',
+    'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'tier', 'priority', 'referredBy',
+    'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
     // carry AI + tags so an optimistic inline edit doesn't momentarily drop them
     'aiScore', 'aiBand', 'aiSummary', 'aiNextStep', 'aiAnalyzedAt', 'aiModel']) {
     out[key] = contact[key];

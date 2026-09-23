@@ -16,9 +16,11 @@ let refs = null;
 let lastFocus = null;
 
 const FIELD_ORDER = [
-  'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone',
-  'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'referredBy',
-  'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes',
+  'fullName', 'entityType', 'role', 'organisation', 'designation',
+  'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
+  'country', 'city', 'stage', 'vehicle', 'tier', 'priority',
+  'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner',
+  'source', 'referredBy', 'signal', 'notes', 'roughNotes',
 ];
 
 function build() {
@@ -206,11 +208,20 @@ function renderView(contact) {
     section('Contact channels', 'at-sign', [
       field('Email', mailto(contact.email), { html: true }),
       field('Phone', tel(contact.phone), { html: true }),
+      field('Alt phone', tel(contact.altPhone), { html: true }),
       field('WhatsApp', wa(contact.whatsapp), { html: true }),
       field('WhatsApp opt-in', contact.whatsappOptIn),
-      field('Location', [contact.city, contact.country].filter(Boolean).join(', ')),
     ]),
-    section('Pipeline', 'git-branch', [field('Stage', contact.stage), field('Vehicle', contact.vehicle)]),
+    section('Location', 'map-pin', [
+      field('Country', contact.country),
+      field('City', contact.city),
+    ]),
+    section('Pipeline', 'git-branch', [
+      field('Stage', contact.stage),
+      field('Vehicle', contact.vehicle),
+      field('Tier', contact.tier),
+      field('Priority', contact.priority),
+    ]),
     section('Follow-up', 'calendar-check', [
       field('Last contact', contact.lastContact ? formatDate(contact.lastContactAt) : ''),
       field('Next action', contact.nextAction),
@@ -220,9 +231,19 @@ function renderView(contact) {
         : field('Next action date', ''),
       field('Relationship owner', contact.relationshipOwner),
     ]),
-    section('Source', 'route', [field('Source / channel', contact.source), field('Referred by', contact.referredBy)]),
-    contact.notes ? h('div', { class: 'drawer-section' }, [h('h3', {}, [icon('sticky-note', 'size-3.5'), 'Notes']),
-      h('p', { class: 'drawer-note', text: contact.notes })]) : null,
+    section('Source', 'route', [
+      field('Source / channel', contact.source),
+      field('Referred by', contact.referredBy),
+      field('Signal / tags', contact.signal),
+    ]),
+    (contact.notes || contact.roughNotes) ? h('div', { class: 'drawer-section' }, [
+      h('h3', {}, [icon('sticky-note', 'size-3.5'), 'Notes']),
+      contact.notes ? h('p', { class: 'drawer-note', text: contact.notes }) : null,
+      contact.roughNotes ? h('div', { class: 'drawer-field' }, [
+        h('div', { class: 'k', text: 'Rough notes for Raghav' }),
+        h('div', { class: 'v', text: contact.roughNotes }),
+      ]) : null,
+    ]) : null,
     store.isLive() ? repliesSection : null,
     store.isLive() ? tagsSection : null,
     store.isLive() ? tasksSection : null,
@@ -432,10 +453,12 @@ function addActivityForm(contact, list) {
 function labelFor(field) {
   return {
     fullName: 'Full name', entityType: 'Entity type', role: 'Role', organisation: 'Organisation',
-    designation: 'Designation', email: 'Email', phone: 'Phone', whatsapp: 'WhatsApp number',
-    whatsappOptIn: 'WhatsApp opt-in', country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage',
+    designation: 'Designation', email: 'Email', phone: 'Phone', altPhone: 'Alt phone',
+    whatsapp: 'WhatsApp number', whatsappOptIn: 'WhatsApp opt-in', country: 'Country', city: 'City',
+    vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority',
     referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action',
-    nextActionDate: 'Next action date', relationshipOwner: 'Relationship owner', source: 'Source / channel', notes: 'Notes',
+    nextActionDate: 'Next action date', relationshipOwner: 'Relationship owner', source: 'Source / channel',
+    signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes for Raghav',
   }[field];
 }
 
@@ -448,12 +471,12 @@ function inputFor(field, value, inputs) {
   } else if (field === 'whatsappOptIn') {
     el = h('select', { class: 'field-input' }, ['', 'Yes', 'No'].map((o) =>
       h('option', { value: o, text: o || '—', selected: o === value ? '' : null })));
-  } else if (field === 'notes') {
+  } else if (field === 'notes' || field === 'roughNotes') {
     el = h('textarea', { class: 'field-input', rows: '3' }); el.value = value || '';
   } else if (field === 'lastContact' || field === 'nextActionDate') {
     el = h('input', { class: 'field-input', type: 'date', value: value || '' });
   } else {
-    const suggestions = ['entityType', 'role', 'vehicle', 'relationshipOwner', 'source', 'country', 'city'].includes(field)
+    const suggestions = ['entityType', 'role', 'vehicle', 'tier', 'priority', 'relationshipOwner', 'source', 'country', 'city'].includes(field)
       ? suggestionsFor(field) : [];
     const listId = `dl-${field}`;
     el = h('input', { class: 'field-input', type: field === 'email' ? 'email' : 'text', value: value || '',
@@ -461,7 +484,8 @@ function inputFor(field, value, inputs) {
     if (suggestions.length) datalist = h('datalist', { id: listId }, suggestions.map((sv) => h('option', { value: sv })));
   }
   inputs[field] = el;
-  return h('label', { class: `form-row${field === 'notes' ? ' form-row--wide' : ''}` }, [
+  const wide = field === 'notes' || field === 'roughNotes';
+  return h('label', { class: `form-row${wide ? ' form-row--wide' : ''}` }, [
     h('span', { class: 'form-label', text: labelFor(field) }), el, datalist,
   ]);
 }
@@ -476,11 +500,12 @@ function renderEdit(contact, { create }) {
 
   const groups = [
     ['Identity', ['fullName', 'entityType', 'role', 'organisation', 'designation']],
-    ['Contact channels', ['email', 'phone', 'whatsapp', 'whatsappOptIn', 'country', 'city']],
-    ['Pipeline', ['vehicle', 'stage']],
+    ['Contact channels', ['email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn']],
+    ['Location', ['country', 'city']],
+    ['Pipeline', ['stage', 'vehicle', 'tier', 'priority']],
     ['Follow-up', ['lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner']],
-    ['Source', ['source', 'referredBy']],
-    ['Notes', ['notes']],
+    ['Source', ['source', 'referredBy', 'signal']],
+    ['Notes', ['notes', 'roughNotes']],
   ];
   refs.body.replaceChildren(...groups.map(([title, fields]) =>
     h('div', { class: 'drawer-section' }, [
