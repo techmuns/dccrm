@@ -27,8 +27,9 @@ const REASON = {
 
 const isHigh = (c) => /^a$/i.test(tidy(c.tier)) || /^(high|p1|1)$/i.test(tidy(c.priority));
 
-/** Build the ranked, de-duplicated priority list from real data. */
-function computeItems(contacts) {
+/** Build the ranked, de-duplicated priority list from real data. Exported so the
+ *  Contacts tab's "Needs outreach" selection matches this panel exactly. */
+export function priorityItems(contacts) {
   const items = [];
   const seen = new Set();
   const add = (c, reasonType, why, suggest, urgency) => {
@@ -54,6 +55,11 @@ function computeItems(contacts) {
   }
   items.sort((a, b) => b.urgency - a.urgency);
   return items.slice(0, CAP);
+}
+
+/** The ids the priorities panel flags — used by the Contacts "Needs outreach" button. */
+export function needsOutreachIds(contacts) {
+  return priorityItems(contacts).map((it) => it.contact.id);
 }
 
 export function createPrioritiesPanel() {
@@ -127,7 +133,7 @@ export function createPrioritiesPanel() {
   function update(state) {
     if (!state || state.status === 'loading') { widget.setState('loading'); return; }
     if (state.status === 'error') { widget.setState('error', { message: state.error }); return; }
-    items = computeItems(state.contacts || []);
+    items = priorityItems(state.contacts || []);
     whyBtn.style.display = items.length && store.isLive() ? '' : 'none';
     if (!items.length) {
       widget.setState('empty', { message: 'Nothing needs attention right now — you’re on top of it.' });
