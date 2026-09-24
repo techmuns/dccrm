@@ -240,6 +240,13 @@ export function mountDataTable(container, {
     renderWindow(); refreshSelectAllUI(); emitSelection();
   }
   function clearSelection() { selected.clear(); renderWindow(); refreshSelectAllUI(); emitSelection(); }
+  /** Replace the selection with the given ids (that are present in the current rows). */
+  function selectIds(ids) {
+    selected.clear();
+    const want = new Set(ids);
+    for (const r of rows) { const k = rowKey(r); if (want.has(k)) selected.add(k); }
+    renderWindow(); refreshSelectAllUI(); emitSelection();
+  }
 
   return {
     el,
@@ -249,6 +256,7 @@ export function mountDataTable(container, {
     getSort: () => ({ ...sort }),
     getSelected: () => new Set(selected),
     clearSelection,
+    selectIds,
     destroy() { resizeObserver.disconnect(); el.remove(); },
   };
 }

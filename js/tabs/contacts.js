@@ -21,6 +21,9 @@ import { mountGrid } from '../components/grid.js';
 import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
 import { openAskModal } from '../ai/askbox.js';
+import { openModal } from '../components/modal.js';
+import { needsOutreachIds } from '../ai/priorities.js';
+import { exportContactsXlsx, sendListParts, exportSendListXlsx, exportSendListCsv, sendListTsv, copyToClipboard } from '../exports.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
 import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
 import { takeContactsPreset } from '../nav.js';
@@ -135,8 +138,13 @@ export function render(container) {
   ]);
 
   /* table */
-  const exportBtn = h('button', { class: 'btn btn-quiet', type: 'button' }, [icon('download', 'size-4'), h('span', { class: 'hidden sm:inline', text: 'Export CSV' })]);
+  const exportBtn = h('button', { class: 'btn btn-quiet', type: 'button', title: 'Export the current list to CSV' }, [icon('download', 'size-4'), h('span', { class: 'hidden lg:inline', text: 'CSV' })]);
   exportBtn.addEventListener('click', exportCsv);
+  const excelBtn = h('button', { class: 'btn btn-quiet', type: 'button', title: 'Download as the “Final Output” Excel (re-imports cleanly)' }, [icon('sheet', 'size-4'), h('span', { class: 'hidden md:inline', text: 'Excel' })]);
+  excelBtn.addEventListener('click', exportExcel);
+  const sendListBtn = h('button', { class: 'btn btn-quiet', type: 'button', title: 'Export a Zoho Campaigns send-list' }, [icon('send', 'size-4'), h('span', { class: 'hidden md:inline', text: 'Send list' })]);
+  sendListBtn.addEventListener('click', () => openSendList(exportScope()));
+  const tableActions = h('div', { class: 'flex items-center gap-1.5' }, [sendListBtn, excelBtn, exportBtn]);
 
   const columns = [
     { key: 'fullName', label: 'Name', cellClass: 'col-name dt-name', defaultSortDir: 'asc',
@@ -168,7 +176,7 @@ export function render(container) {
     subtitle: 'Click anyone to see their full profile.',
     iconName: 'users',
     accent: PALETTE[0],
-    actions: exportBtn,
+    actions: tableActions,
     defaultSort: { key: 'lastContact', dir: 'desc' },
     emptyMessage: 'No contacts match these filters.',
     selectable: store.isLive(),
@@ -240,7 +248,9 @@ export function render(container) {
   ]);
   const askBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onClick: () => openAskModal() },
     [icon('sparkles', 'size-3.5'), h('span', { text: 'Ask AI' })]);
-  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint, h('div', { class: 'ml-auto' }, [askBtn])]);
+  const needsBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'Select everyone the priorities panel flags', onClick: selectNeedsOutreach },
+    [icon('list-checks', 'size-3.5'), h('span', { text: 'Needs outreach' })]);
+  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint, h('div', { class: 'ml-auto flex items-center gap-2' }, [needsBtn, askBtn])]);
 
   function applyModeDom() {
     if (mode === 'edit' && !store.isLive()) mode = 'view';
@@ -370,6 +380,81 @@ export function render(container) {
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast(`Exported ${formatNumber(filtered.length)} contacts to CSV.`, 'good');
+  }
+
+  /* ---------- Phase 4 exports ---------- */
+
+  /** What an export acts on: the ticked selection if any, else the current filtered view. */
+  function exportScope() {
+    const all = currentState?.contacts || [];
+    if (selectedIds.size) return all.filter((c) => selectedIds.has(c.id));
+    return filtered;
+  }
+
+  function exportExcel() {
+    const rows = exportScope();
+    if (!rows.length) { toast('Nothing to export with these filters.', 'warn'); return; }
+    try {
+      exportContactsXlsx(rows);
+      toast(`Exported ${formatNumber(rows.length)} contacts to Excel (Final Output).`, 'good');
+    } catch (err) { toast(err.message || 'Could not export.', 'error'); }
+  }
+
+  /** Select everyone the priorities panel flags (selection lives in the View table). */
+  function selectNeedsOutreach() {
+    if (!store.isLive()) { toast('Connect the database to select contacts.', 'warn'); return; }
+    if (mode === 'edit') setMode('view');
+    const ids = needsOutreachIds(currentState?.contacts || []);
+    const present = new Set((filtered || []).map((c) => c.id));
+    const pickable = ids.filter((id) => present.has(id));
+    if (!pickable.length) {
+      toast(ids.length ? 'Those contacts are hidden by the current filters.' : 'Nothing needs outreach right now — you’re on top of it.', ids.length ? 'warn' : 'good');
+      return;
+    }
+    table.selectIds(pickable);
+    toast(`Selected ${formatNumber(pickable.length)} who need outreach.`, 'good');
+  }
+
+  /** The Zoho send-list dialog: X-of-Y note, a small preview, copy + download. */
+  function openSendList(contacts) {
+    if (!contacts.length) { toast('Select or filter some contacts first.', 'warn'); return; }
+    const { withEmail, total } = sendListParts(contacts);
+    const m = openModal({ title: 'Export send list', iconName: 'send', subtitle: 'For Zoho Campaigns — Full Name, Email, Organisation, Stage.' });
+
+    const note = h('p', { class: 'sendlist-note' }, [
+      icon('mail', 'size-4'),
+      h('span', { html: `<b>${formatNumber(withEmail.length)}</b> of ${formatNumber(total)} have an email address${withEmail.length < total ? ' — the rest are skipped' : ''}.` }),
+    ]);
+    let previewEl;
+    if (withEmail.length) {
+      const rows = withEmail.slice(0, 8).map((c) => h('tr', {}, [
+        h('td', { text: c.fullName || '—' }), h('td', { text: c.email }),
+      ]));
+      previewEl = h('div', { class: 'sendlist-prev' }, [
+        h('table', { class: 'ask-table' }, [
+          h('thead', {}, [h('tr', {}, [h('th', { text: 'Full Name' }), h('th', { text: 'Email' })])]),
+          h('tbody', {}, rows),
+        ]),
+        withEmail.length > 8 ? h('p', { class: 't-caption mt-1', text: `…and ${formatNumber(withEmail.length - 8)} more.` }) : null,
+      ]);
+    } else {
+      previewEl = h('p', { class: 't-caption', text: 'None of these contacts has an email address, so there is nothing to send.' });
+    }
+
+    const copyBtn = h('button', { class: 'btn btn-primary', type: 'button' }, [icon('clipboard-copy', 'size-4'), h('span', { text: 'Copy to clipboard' })]);
+    const xlsxBtn = h('button', { class: 'btn btn-quiet', type: 'button' }, [icon('sheet', 'size-4'), h('span', { text: '.xlsx' })]);
+    const csvBtn = h('button', { class: 'btn btn-quiet', type: 'button' }, [icon('download', 'size-4'), h('span', { text: '.csv' })]);
+    copyBtn.addEventListener('click', async () => {
+      const okc = await copyToClipboard(sendListTsv(contacts));
+      toast(okc ? `Copied ${formatNumber(withEmail.length)} contacts — paste into Zoho or a sheet.` : 'Could not copy to clipboard.', okc ? 'good' : 'warn');
+    });
+    xlsxBtn.addEventListener('click', () => { try { exportSendListXlsx(contacts); toast(`Downloaded ${formatNumber(withEmail.length)} contacts.`, 'good'); } catch (err) { toast(err.message || 'Could not export.', 'error'); } });
+    csvBtn.addEventListener('click', () => { exportSendListCsv(contacts); toast(`Downloaded ${formatNumber(withEmail.length)} contacts.`, 'good'); });
+    if (!withEmail.length) { copyBtn.disabled = xlsxBtn.disabled = csvBtn.disabled = true; }
+
+    m.body.replaceChildren(note, previewEl);
+    m.foot.replaceChildren(h('button', { class: 'btn btn-quiet', type: 'button', text: 'Close', onClick: m.close }), csvBtn, xlsxBtn, copyBtn);
+    m.refresh();
   }
 
   /** Re-apply the filters to the current data and redraw everything. */
