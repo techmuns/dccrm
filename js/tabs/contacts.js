@@ -27,10 +27,8 @@ import * as store from '../store.js';
 /** Stage-split items covering EVERYONE in the selection, in pipeline order. */
 function stageSplitItems(contacts) {
   const counts = countBy(contacts, 'stage');
-  const order = [
-    ...STAGE_ORDER, STAGE_DORMANT,
-    ...[...counts.keys()].filter((s) => !ALL_STAGES.includes(s)),
-  ];
+  // Funnel order, then Hot + Dormant, then any other stage value the data contains.
+  const order = [...ALL_STAGES, ...[...counts.keys()].filter((s) => !ALL_STAGES.includes(s))];
   return order
     .filter((name) => counts.get(name))
     .map((name) => ({ name, value: counts.get(name), color: colorOf('stage', name) }));
@@ -148,7 +146,7 @@ export function render(container) {
     { key: 'country', label: 'Country', cellClass: 'col-country',
       sortValue: (r) => r.country?.toLowerCase(), render: (r) => textCell(r.country) },
     { key: 'stage', label: 'Stage', cellClass: 'col-stage',
-      sortValue: (r) => STAGE_ORDER.indexOf(r.stage),
+      sortValue: (r) => { const i = ALL_STAGES.indexOf(r.stage); return i < 0 ? 99 : i; },
       render: (r) => (store.isLive() ? stageEditor(r) : chipCell('stage', r.stage)) },
     { key: 'relationshipOwner', label: 'Owner', cellClass: 'col-owner',
       sortValue: (r) => r.relationshipOwner?.toLowerCase(),

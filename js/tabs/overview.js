@@ -83,12 +83,12 @@ export function render(container) {
     }),
     active: statTile({
       label: 'In active conversation',
-      hint: 'People at the In Conversation, Interested or Meeting Scheduled stage.',
+      hint: 'People at Network, Qualified, In Diligence, Committed or Hot.',
       iconName: 'messages-square', accent: PALETTE[1],
     }),
-    onboarded: statTile({
-      label: 'Onboarded investors',
-      hint: 'People who have completed onboarding and invested.',
+    funded: statTile({
+      label: 'Funded investors',
+      hint: 'People at the Funded stage — money is in.',
       iconName: 'circle-check-big', accent: PALETTE[2],
     }),
     due: statTile({
@@ -193,7 +193,7 @@ export function render(container) {
     const numbers = headlineNumbers(rows);
     tiles.total.set(numbers.total, state.query ? 'Matching your search' : 'Everyone on the list');
     tiles.active.set(numbers.active, `${formatPercent(numbers.active, numbers.total)} of everyone`);
-    tiles.onboarded.set(numbers.onboarded, `${formatPercent(numbers.onboarded, numbers.total)} of everyone`);
+    tiles.funded.set(numbers.funded, `${formatPercent(numbers.funded, numbers.total)} of everyone`);
     tiles.due.set(
       numbers.dueThisWeek,
       numbers.overdue ? `${formatNumber(numbers.overdue)} more are already past due` : 'Nothing is past due',
@@ -206,9 +206,11 @@ export function render(container) {
       funnel.setState('empty', { message: 'No stages are filled in for these contacts yet.' });
     } else {
       funnel.draw(funnelOption(pipeline.stages), pipeline.stages, { valueLabel: 'People' });
-      funnel.note(pipeline.outsideTotal
-        ? `${formatNumber(pipeline.outsideTotal)} more ${pipeline.outsideTotal === 1 ? 'person is' : 'people are'} parked outside the pipeline (${pipeline.outsideNames.join(', ')}).`
-        : '');
+      const outParts = [];
+      if (pipeline.hot) outParts.push(`${formatNumber(pipeline.hot)} Hot (priority)`);
+      if (pipeline.dormant) outParts.push(`${formatNumber(pipeline.dormant)} Dormant (parked)`);
+      if (pipeline.otherTotal) outParts.push(`${formatNumber(pipeline.otherTotal)} in ${escapeHtml(pipeline.otherNames.join(', '))}`);
+      funnel.note(outParts.length ? `Outside the funnel: ${outParts.join(' · ')}.` : '');
     }
 
     /* investors by type */

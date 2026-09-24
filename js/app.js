@@ -93,6 +93,109 @@ function renderChip(state) {
 
 /* ---------- upload ---------- */
 
+/**
+ * Ask which sheet to import and whether to merge or replace. Resolves to
+ * { sheetName, mode } on confirm, or null if the user cancels.
+ */
+function importDialog({ sheets, defaultSheetName }) {
+  return new Promise((resolve) => {
+    let mode = 'merge';
+    let sheetName = defaultSheetName;
+    const countCache = new Map();
+    const countFor = (name) => {
+      if (!countCache.has(name)) {
+        const sheet = sheets.find((s) => s.name === name);
+        let n = 0;
+        try { n = normalizeRows(sheet.rows).contacts.length; } catch { n = 0; }
+        countCache.set(name, n);
+      }
+      return countCache.get(name);
+    };
+
+    const backdrop = h('div', { class: 'modal-backdrop' });
+    const summary = h('p', { class: 'modal-sub' });
+    const importLabel = h('span', { text: 'Import' });
+    const importBtn = h('button', { class: 'btn btn-primary', type: 'button', style: 'min-width:7rem' },
+      [icon('download', 'size-4'), importLabel]);
+    const cancelBtn = h('button', { class: 'btn btn-quiet', type: 'button', text: 'Cancel' });
+
+    const onKey = (e) => { if (e.key === 'Escape') done(null); };
+    function done(value) {
+      backdrop.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(() => backdrop.remove(), 200);
+      resolve(value);
+    }
+    cancelBtn.addEventListener('click', () => done(null));
+    importBtn.addEventListener('click', () => { if (!importBtn.disabled) done({ sheetName, mode }); });
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) done(null); });
+
+    const updateSummary = () => {
+      const n = countFor(sheetName);
+      summary.textContent = n
+        ? `Ready to import ${formatNumber(n)} contact${n === 1 ? '' : 's'} from “${sheetName}”.`
+        : `“${sheetName}” has no rows we recognise as contacts.`;
+      importBtn.disabled = !n;
+    };
+
+    let sheetSection;
+    if (sheets.length > 1) {
+      const select = h('select', { class: 'field-input' },
+        sheets.map((s) => h('option', {
+          value: s.name,
+          text: `${s.name} — ${formatNumber(s.rows.length)} rows · ${s.score} columns matched`,
+          selected: s.name === sheetName ? '' : null,
+        })));
+      select.addEventListener('change', () => { sheetName = select.value; updateSummary(); });
+      sheetSection = h('div', {}, [h('label', { class: 'modal-label', text: 'Which sheet to import?' }), select]);
+    } else {
+      sheetSection = h('div', {}, [
+        h('label', { class: 'modal-label', text: 'Sheet' }), h('p', { class: 't-body', text: sheetName }),
+      ]);
+    }
+
+    const modeWrap = h('div', {}, [h('label', { class: 'modal-label', text: 'How should we bring these in?' })]);
+    const makeOpt = (value, title, desc) => {
+      const radio = h('input', { type: 'radio', name: 'import-mode', value });
+      radio.checked = value === mode;
+      const cardEl = h('label', { class: `opt-card${value === mode ? ' is-sel' : ''}` }, [
+        radio,
+        h('div', { class: 'min-w-0' }, [
+          h('div', { class: 'opt-title', text: title }), h('div', { class: 'opt-desc', text: desc }),
+        ]),
+      ]);
+      radio.addEventListener('change', () => {
+        mode = value;
+        for (const c of modeWrap.querySelectorAll('.opt-card')) c.classList.toggle('is-sel', c === cardEl);
+        importBtn.classList.toggle('btn-danger', mode === 'replace');
+        importBtn.classList.toggle('btn-primary', mode !== 'replace');
+        importLabel.textContent = mode === 'replace' ? 'Replace all' : 'Import';
+      });
+      return cardEl;
+    };
+    modeWrap.append(h('div', { class: 'flex flex-col gap-2' }, [
+      makeOpt('merge', 'Merge into existing contacts',
+        'Update people already in the CRM and add new ones. Matches by email, or by name + phone when there’s no email.'),
+      makeOpt('replace', 'Replace all contacts',
+        'Delete every contact in the CRM first, then import this sheet fresh. This cannot be undone.'),
+    ]));
+
+    const modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Import contacts' }, [
+      h('div', { class: 'modal-head' }, [
+        h('div', { class: 'modal-title' }, [icon('upload', 'size-[18px]'), 'Import contacts']), summary,
+      ]),
+      h('div', { class: 'modal-body' }, [sheetSection, modeWrap]),
+      h('div', { class: 'modal-foot' }, [cancelBtn, importBtn]),
+    ]);
+    backdrop.append(modal);
+    document.body.append(backdrop);
+    document.addEventListener('keydown', onKey);
+    refreshIcons(backdrop);
+    updateSummary();
+    requestAnimationFrame(() => backdrop.classList.add('open'));
+  });
+}
+
 let busy = false;
 
 async function handleFile(file) {
@@ -101,12 +204,17 @@ async function handleFile(file) {
   busy = true;
   el.uploadBtn.disabled = true;
   try {
-    const { rows, sheetName } = await parseSpreadsheet(file);
-    const { contacts } = normalizeRows(rows);            // map headers → fields, validate
-    const res = await store.importContacts(contacts);
+    const { sheets, defaultSheetName } = await parseSpreadsheet(file);
+    const choice = await importDialog({ sheets, defaultSheetName });
+    if (!choice) return;                                  // cancelled
+
+    const sheet = sheets.find((s) => s.name === choice.sheetName);
+    const { contacts } = normalizeRows(sheet.rows);       // map headers → fields, validate
+    const res = await store.importContacts(contacts, choice.mode);
     if (!res.ok) { toast(res.error || "We couldn't import that file.", 'error'); return; }
+    const verb = res.mode === 'replace' ? 'Replaced with' : 'Imported';
     toast(
-      `Imported “${sheetName}” — ${formatNumber(res.added)} added · ${formatNumber(res.updated)} updated` +
+      `${verb} “${choice.sheetName}” — ${formatNumber(res.added)} added · ${formatNumber(res.updated)} updated` +
       (res.skipped ? ` · ${formatNumber(res.skipped)} skipped` : '') + '.',
       'good',
     );

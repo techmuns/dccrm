@@ -103,10 +103,12 @@ export function dueByWeek(contacts, weeks = 6) {
 
 const CSV_HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
-  designation: 'Designation', email: 'Email', phone: 'Phone (display)', whatsapp: 'WhatsApp Number (E.164)',
-  whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City', vehicle: 'Vehicle',
-  stage: 'Stage', referredBy: 'Referred By', lastContact: 'Last Contact', nextAction: 'Next Action',
-  nextActionDate: 'Next Action Date', relationshipOwner: 'Relationship Owner', source: 'Source / Channel', notes: 'Notes',
+  designation: 'Designation', email: 'Email', phone: 'Phone (display)', altPhone: 'Alt Phone',
+  whatsapp: 'WhatsApp Number (E.164)', whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City',
+  vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
+  lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
+  relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
+  notes: 'Notes', roughNotes: 'Rough Notes for Raghav',
 };
 
 const csvCell = (value) => {

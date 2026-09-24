@@ -11,17 +11,19 @@ import { SEED_CONTACTS } from './_seed.js';
 /* The columns a client may write on a contact. id / createdAt / updatedAt / updatedBy
    are server-managed. */
 export const WRITABLE = [
-  'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone',
-  'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'referredBy',
-  'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'notes',
+  'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone', 'altPhone',
+  'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'tier', 'priority', 'referredBy',
+  'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
 
 export const HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
-  designation: 'Designation', email: 'Email', phone: 'Phone (display)', whatsapp: 'WhatsApp Number (E.164)',
-  whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City', vehicle: 'Vehicle',
-  stage: 'Stage', referredBy: 'Referred By', lastContact: 'Last Contact', nextAction: 'Next Action',
-  nextActionDate: 'Next Action Date', relationshipOwner: 'Relationship Owner', source: 'Source / Channel', notes: 'Notes',
+  designation: 'Designation', email: 'Email', phone: 'Phone (display)', altPhone: 'Alt Phone',
+  whatsapp: 'WhatsApp Number (E.164)', whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City',
+  vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
+  lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
+  relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
+  notes: 'Notes', roughNotes: 'Rough Notes for Raghav',
 };
 
 export const TAG_PALETTE = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -130,7 +132,26 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'aiNextStep', 'TEXT'],
   ['contacts', 'aiAnalyzedAt', 'TEXT'],
   ['contacts', 'aiModel', 'TEXT'],
+  // Phase-1 Dhamma working-copy columns.
+  ['contacts', 'altPhone', 'TEXT'],
+  ['contacts', 'tier', 'TEXT'],
+  ['contacts', 'priority', 'TEXT'],
+  ['contacts', 'signal', 'TEXT'],
+  ['contacts', 'roughNotes', 'TEXT'],
 ];
+
+/* Old pipeline vocabulary → Dhamma's real stages. Applied once to a legacy demo
+   database so existing seed rows adopt the new funnel; never touches real data,
+   which already uses the new stage names. */
+const LEGACY_STAGE_MAP = {
+  'Not Contacted': 'Cold',
+  'Contacted': 'Network',
+  'In Conversation': 'Qualified',
+  'Interested': 'In Diligence',
+  'Meeting Scheduled': 'Committed',
+  'Onboarded': 'Funded',
+};
+const NEW_STAGES = ['Cold', 'Network', 'Qualified', 'In Diligence', 'Committed', 'Funded', 'Hot'];
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
 
@@ -167,7 +188,7 @@ async function seedTasksIfEmpty(env) {
   if (n > 0) return;
   // Attach a few starter tasks to active-stage contacts so Follow-ups is alive.
   const rows = await env.DB.prepare(
-    "SELECT id, relationshipOwner FROM contacts WHERE stage IN ('In Conversation','Interested','Meeting Scheduled') ORDER BY id LIMIT 4",
+    "SELECT id, relationshipOwner FROM contacts WHERE stage IN ('Qualified','In Diligence','Committed') ORDER BY id LIMIT 4",
   ).all();
   const list = rows.results || [];
   if (!list.length) return;
@@ -184,11 +205,30 @@ async function seedSegmentsIfEmpty(env) {
   const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM segments').first();
   if (n > 0) return;
   const seg = [
-    ['FPIs in conversation', JSON.stringify({ entityType: ['FPI'], stage: ['In Conversation'] })],
+    ['FPIs in the pipeline', JSON.stringify({ entityType: ['FPI'], stage: ['Qualified'] })],
     ['Family Offices', JSON.stringify({ entityType: ['Family Office'] })],
   ];
   await env.DB.batch(seg.map(([name, filtersJson]) =>
     env.DB.prepare('INSERT INTO segments (name, filtersJson, createdAt) VALUES (?, ?, ?)').bind(name, filtersJson, now())));
+}
+
+/**
+ * One-time remap of a legacy demo database from the old pipeline vocabulary to
+ * Dhamma's real stages. Runs ONLY when the data still uses the old names AND has
+ * no new-stage rows yet, so it can never clobber real imported data.
+ */
+async function migrateLegacyStages(env) {
+  const oldNames = Object.keys(LEGACY_STAGE_MAP);
+  const legacy = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM contacts WHERE stage IN (${oldNames.map(() => '?').join(',')})`,
+  ).bind(...oldNames).first();
+  if (!legacy || !legacy.n) return;   // nothing legacy to migrate
+  const modern = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM contacts WHERE stage IN (${NEW_STAGES.map(() => '?').join(',')})`,
+  ).bind(...NEW_STAGES).first();
+  if (modern && modern.n) return;     // already has real/new-stage data — leave it alone
+  await env.DB.batch(Object.entries(LEGACY_STAGE_MAP).map(([oldS, newS]) =>
+    env.DB.prepare('UPDATE contacts SET stage = ? WHERE stage = ?').bind(newS, oldS)));
 }
 
 /** Create/migrate/seed everything. Cheap and idempotent; cached per isolate. */
@@ -200,6 +240,7 @@ export async function ensureSchema(env) {
   await seedTagsIfEmpty(env);
   await seedTasksIfEmpty(env);
   await seedSegmentsIfEmpty(env);
+  await migrateLegacyStages(env);
   schemaReady = true;
 }
 

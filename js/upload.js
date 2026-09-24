@@ -1,15 +1,19 @@
 /**
  * upload.js — reads a spreadsheet the user drops in, entirely in the browser.
  *
- * Nothing leaves the machine. The file is parsed with SheetJS, the header row is
- * found even when it is not the very first row, and the rows are handed to the
- * data layer in exactly the same shape as the sample JSON.
+ * Nothing leaves the machine. The file is parsed with SheetJS. Dhamma's working copy
+ * has several sheets, so every sheet is scanned: for each we find the header row (it
+ * is not always the first row) and score how many of our known columns it has. We
+ * return all the sheets that look like contact lists, plus a suggested default — the
+ * sheet named "Final Output" when present, otherwise the best-matching one — and let
+ * the caller show a picker. Rows come out in the same shape as the sample JSON.
  */
 import { mapHeaders } from './data.js';
 
 export const ACCEPTED = '.xlsx,.xls,.csv';
 
 const MAX_BYTES = 25 * 1024 * 1024;
+const PREFERRED_SHEET = 'final output';   // matched case-insensitively
 
 /** How many of our known fields a candidate header row recognises. */
 function scoreHeaderRow(sheet, headerRowIndex) {
@@ -20,8 +24,20 @@ function scoreHeaderRow(sheet, headerRowIndex) {
   return { score: matched.length, rows: probe };
 }
 
+/** Best header-row interpretation of one sheet: the row offset that recognises the most columns. */
+function readSheet(sheet) {
+  let best = { score: 0, rows: [] };
+  for (let headerRow = 0; headerRow < 5; headerRow += 1) {
+    const candidate = scoreHeaderRow(sheet, headerRow);
+    if (candidate.score > best.score) best = candidate;
+    if (best.score >= 8) break; // a clear winner, stop looking
+  }
+  return best;
+}
+
 /**
- * Parse a File into raw sheet rows.
+ * Parse a File into candidate sheets.
+ * Returns { sheets: [{ name, rows, score }], defaultSheetName }.
  * Throws an Error with a message that is safe to show the user as-is.
  */
 export async function parseSpreadsheet(file) {
@@ -46,26 +62,26 @@ export async function parseSpreadsheet(file) {
 
   if (!workbook.SheetNames?.length) throw new Error('That workbook has no sheets in it.');
 
-  // Try every sheet, and the first few rows of each as the header row. Real sheets
-  // often start with a title row or a blank line above the actual headers.
-  let best = { score: 0, rows: [], sheetName: workbook.SheetNames[0] };
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
+  // Scan every sheet; keep the ones that recognisably hold contacts (3+ known columns).
+  const sheets = [];
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
     if (!sheet) continue;
-    for (let headerRow = 0; headerRow < 5; headerRow += 1) {
-      const candidate = scoreHeaderRow(sheet, headerRow);
-      if (candidate.score > best.score) best = { ...candidate, sheetName };
-      if (best.score >= 8) break; // a clear winner, stop looking
-    }
-    if (best.score >= 8) break;
+    const best = readSheet(sheet);
+    if (best.rows.length && best.score >= 3) sheets.push({ name, rows: best.rows, score: best.score });
   }
 
-  if (best.score < 3) {
+  if (!sheets.length) {
     throw new Error(
       "We couldn't find the expected columns in that file. It needs a header row with " +
       'names like "Full Name", "Entity Type", "Stage" and "Primary Country".'
     );
   }
 
-  return { rows: best.rows, sheetName: best.sheetName, matchedColumns: best.score };
+  // Default: the "Final Output" sheet if it's there, otherwise the best-matching sheet.
+  const preferred = sheets.find((s) => s.name.trim().toLowerCase() === PREFERRED_SHEET);
+  const byScore = [...sheets].sort((a, b) => b.score - a.score || b.rows.length - a.rows.length);
+  const defaultSheetName = (preferred || byScore[0]).name;
+
+  return { sheets, defaultSheetName };
 }
