@@ -138,6 +138,8 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'priority', 'TEXT'],
   ['contacts', 'signal', 'TEXT'],
   ['contacts', 'roughNotes', 'TEXT'],
+  // Phase-3: where a logged note came from (e.g. "Prompt box", "AI draft").
+  ['activities', 'source', 'TEXT'],
 ];
 
 /* Old pipeline vocabulary → Dhamma's real stages. Applied once to a legacy demo
@@ -152,6 +154,10 @@ const LEGACY_STAGE_MAP = {
   'Onboarded': 'Funded',
 };
 const NEW_STAGES = ['Cold', 'Network', 'Qualified', 'In Diligence', 'Committed', 'Funded', 'Hot'];
+
+/* Dhamma's real pipeline vocabulary, in full (the funnel plus the two side statuses).
+   The single source of truth the AI layer validates stages against. */
+export const STAGES = ['Cold', 'Network', 'Qualified', 'In Diligence', 'Committed', 'Funded', 'Hot', 'Dormant'];
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
 
@@ -269,4 +275,19 @@ export async function latestRepliesByContact(env) {
   ).all();
   for (const r of res.results || []) map.set(r.contactId, r); // last (newest) write wins
   return map;
+}
+
+/**
+ * A compact, token-light snapshot of the whole book for the AI layer (Ask / Update).
+ * Only real rows, only the identifying + filtering fields. Capped so a very large book
+ * can't blow the model's context; the AI is told to reference contacts by #id, and the
+ * UI always renders the real row from the store — nothing shown is ever invented.
+ */
+export async function loadCompactBook(env, limit = 2000) {
+  const res = await env.DB.prepare(
+    `SELECT id, fullName, organisation, email, phone, whatsapp, entityType, stage, country, city,
+            tier, priority, relationshipOwner, lastContact, nextActionDate, signal
+       FROM contacts ORDER BY updatedAt DESC LIMIT ?`,
+  ).bind(Math.max(1, Math.min(limit, 20000))).all();
+  return res.results || [];
 }
