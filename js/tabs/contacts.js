@@ -17,6 +17,7 @@ import { series } from '../data.js';
 import { contactsToCsv } from '../filters.js';
 import { createFilterBar } from '../components/filterbar.js';
 import { mountDataTable } from '../components/datatable.js';
+import { mountGrid } from '../components/grid.js';
 import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
@@ -178,7 +179,92 @@ export function render(container) {
   /* bulk-action bar (shown only when rows are selected) */
   const bulkBar = h('div', { class: 'bulk-bar', hidden: true });
 
-  container.append(filterBar.el, segmentsRow, filterBar.chipsEl, summary, bulkBar, tableHost);
+  /* ---------- View ⇄ Edit (grid) mode ---------- */
+  const MODE_KEY = 'dccrm.contacts.mode';
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  let mode = 'view';
+  try { if (localStorage.getItem(MODE_KEY) === 'edit') mode = 'edit'; } catch { /* ignore */ }
+
+  const uniqVals = (field) =>
+    [...new Set(store.getState().contacts.map((c) => tidy(c[field])).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const withBase = (base, field) => { const set = new Set(base); for (const v of uniqVals(field)) set.add(v); return [...set]; };
+
+  /* The 22 editable columns, in the requested order. Enum columns get dropdowns from the
+     same option lists the rest of the app uses; dates get date inputs; email is validated. */
+  const gridColumns = [
+    { key: 'fullName', label: 'Full Name', width: 190, type: 'text', sticky: true, required: true },
+    { key: 'organisation', label: 'Organisation', width: 175, type: 'text', datalist: () => uniqVals('organisation') },
+    { key: 'entityType', label: 'Entity Type', width: 150, type: 'enum', colorDim: 'entityType', options: () => uniqVals('entityType') },
+    { key: 'role', label: 'Role', width: 120, type: 'text' },
+    { key: 'designation', label: 'Designation', width: 150, type: 'text' },
+    { key: 'email', label: 'Email', width: 210, type: 'email', validate: (v) => (EMAIL_RE.test(v) ? null : 'That doesn’t look like an email address.') },
+    { key: 'phone', label: 'Phone', width: 140, type: 'text' },
+    { key: 'whatsapp', label: 'WhatsApp', width: 140, type: 'text' },
+    { key: 'country', label: 'Country', width: 130, type: 'text', datalist: () => uniqVals('country') },
+    { key: 'city', label: 'City', width: 130, type: 'text', datalist: () => uniqVals('city') },
+    { key: 'vehicle', label: 'Vehicle', width: 175, type: 'enum', options: () => uniqVals('vehicle') },
+    { key: 'stage', label: 'Stage', width: 145, type: 'enum', colorDim: 'stage', options: () => [...ALL_STAGES] },
+    { key: 'tier', label: 'Tier', width: 80, type: 'enum', options: () => withBase(['A', 'B', 'C'], 'tier') },
+    { key: 'priority', label: 'Priority', width: 105, type: 'enum', options: () => withBase(['High', 'Medium', 'Low'], 'priority') },
+    { key: 'referredBy', label: 'Referred By', width: 150, type: 'text', datalist: () => uniqVals('referredBy') },
+    { key: 'relationshipOwner', label: 'Relationship Owner', width: 165, type: 'text', datalist: () => uniqVals('relationshipOwner') },
+    { key: 'lastContact', label: 'Last Contact', width: 135, type: 'date' },
+    { key: 'nextAction', label: 'Next Action', width: 185, type: 'text' },
+    { key: 'nextActionDate', label: 'Next Action Date', width: 150, type: 'date' },
+    { key: 'source', label: 'Source', width: 150, type: 'text', datalist: () => uniqVals('source') },
+    { key: 'signal', label: 'Signal / Tags', width: 160, type: 'text' },
+    { key: 'notes', label: 'Notes', width: 260, type: 'text' },
+  ];
+
+  const gridHost = h('div', { class: 'flex flex-1 min-h-0 hidden' });
+  const grid = mountGrid(gridHost, {
+    columns: gridColumns,
+    title: 'Contacts — grid edit',
+    subtitle: 'Click a cell to edit · Enter / Tab to move · changes save automatically.',
+    iconName: 'sheet',
+    accent: PALETTE[0],
+    onSaveCell: (contact, patch) => store.updateContact(contact.id, patch, { optimistic: false, silent: true }),
+    onCreate: (fields) => store.createContact(fields, { silent: true }),
+    onDelete: (contact) => store.deleteContact(contact.id, { silent: true }),
+  });
+
+  const viewBtn = h('button', { type: 'button', 'aria-pressed': 'true' }, [icon('table-2', 'size-3.5'), h('span', { text: 'View' })]);
+  const editBtn = h('button', { type: 'button', 'aria-pressed': 'false' }, [icon('sheet', 'size-3.5'), h('span', { text: 'Edit (grid)' })]);
+  viewBtn.addEventListener('click', () => setMode('view'));
+  editBtn.addEventListener('click', () => setMode('edit'));
+  const modeToggle = h('div', { class: 'mode-toggle' }, [viewBtn, editBtn]);
+  const gridHint = h('div', { class: 'grid-hint hidden' }, [
+    icon('info', 'size-3.5'),
+    h('span', { text: 'Enter / Tab to move · Esc to cancel · Ctrl/⌘+C copy · V paste · D fill down' }),
+  ]);
+  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint]);
+
+  function applyModeDom() {
+    if (mode === 'edit' && !store.isLive()) mode = 'view';
+    const editing = mode === 'edit';
+    viewBtn.setAttribute('aria-pressed', String(!editing));
+    editBtn.setAttribute('aria-pressed', String(editing));
+    editBtn.disabled = !store.isLive();
+    editBtn.title = store.isLive() ? 'Edit contacts in a spreadsheet grid' : 'Connect the database to edit inline';
+    summary.classList.toggle('hidden', editing);
+    tableHost.classList.toggle('hidden', editing);
+    gridHost.classList.toggle('hidden', !editing);
+    gridHint.classList.toggle('hidden', !editing);
+    if (editing) bulkBar.hidden = true;
+  }
+
+  function setMode(next) {
+    if (next === 'edit' && !store.isLive()) { toast('Connect the database to edit contacts inline.', 'warn'); return; }
+    const leavingEdit = mode === 'edit' && next !== 'edit';
+    mode = next;
+    try { localStorage.setItem(MODE_KEY, mode); } catch { /* ignore */ }
+    if (leavingEdit) table.clearSelection?.();
+    applyModeDom();
+    if (leavingEdit && store.isLive()) store.resync();   // flush silent grid edits to every other tab
+    refresh();
+  }
+
+  container.append(modeBar, filterBar.el, segmentsRow, filterBar.chipsEl, summary, bulkBar, tableHost, gridHost);
   refreshIcons(container);
 
   let currentState = null;
@@ -290,6 +376,10 @@ export function render(container) {
     const base = currentState.visible;              // already respects the global search
     filtered = filterBar.apply(base);
 
+    // Edit (grid) mode: the same filtered set, editable. Per-cell saves don't re-enter
+    // here (they're silent), so the grid is only rebuilt on a real filter/search change.
+    if (mode === 'edit' && store.isLive()) { grid.setRows(filtered); return; }
+
     const total = currentState.contacts.length;
     split.setSubtitle(`Showing ${formatNumber(filtered.length)} of ${formatNumber(total)} contacts`);
 
@@ -335,6 +425,7 @@ export function render(container) {
     filterBar.setData(state.contacts);
     const preset = takeContactsPreset();
     if (preset) filterBar.setSelections(preset);   // arrives from a cross-tab jump
+    applyModeDom();
     refresh();
   }
 
@@ -343,7 +434,7 @@ export function render(container) {
     destroy() {
       container.parentElement?.classList.remove('view--fill');
       split.destroy(); donut.destroy(); countries.destroy();
-      table.destroy();
+      table.destroy(); grid.destroy();
     },
   };
 }

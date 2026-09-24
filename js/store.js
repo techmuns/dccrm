@@ -152,7 +152,7 @@ async function loadSampleFallback() {
 
 const PREVIEW = { ok: false, preview: true, error: 'Preview mode — the database is not connected.' };
 
-export async function createContact(fields) {
+export async function createContact(fields, { silent = false } = {}) {
   if (!isLive()) return PREVIEW;
   try {
     const { contact } = await api('/api/contacts', { method: 'POST', body: JSON.stringify(fields) });
@@ -161,7 +161,7 @@ export async function createContact(fields) {
     state.contacts.unshift(normalised);
     state.total += 1;
     recomputeVisible();
-    emit();
+    if (!silent) emit();   // silent: the caller (grid) updates its own DOM without a full re-render
     return { ok: true, contact: normalised };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -173,7 +173,7 @@ export async function createContact(fields) {
  * server confirms (or we roll back on failure). `patch` may be one field (quick
  * inline edits) or many (the full edit form).
  */
-export async function updateContact(id, patch, { optimistic = true } = {}) {
+export async function updateContact(id, patch, { optimistic = true, silent = false } = {}) {
   if (!isLive()) return PREVIEW;
   const index = state.contacts.findIndex((c) => c.id === id);
   const previous = index >= 0 ? state.contacts[index] : null;
@@ -183,7 +183,7 @@ export async function updateContact(id, patch, { optimistic = true } = {}) {
     ensureColours(merged);
     state.contacts[index] = merged;
     recomputeVisible();
-    emit();
+    if (!silent) emit();
   }
 
   try {
@@ -193,32 +193,36 @@ export async function updateContact(id, patch, { optimistic = true } = {}) {
     const at = state.contacts.findIndex((c) => c.id === id);
     if (at >= 0) state.contacts[at] = confirmed;
     recomputeVisible();
-    emit();
+    if (!silent) emit();     // silent: the grid patches only the edited row, no full re-render
     return { ok: true, contact: confirmed };
   } catch (err) {
     if (optimistic && previous) {           // roll back
       const at = state.contacts.findIndex((c) => c.id === id);
       if (at >= 0) state.contacts[at] = previous;
       recomputeVisible();
-      emit();
+      if (!silent) emit();
     }
     return { ok: false, error: err.message };
   }
 }
 
-export async function deleteContact(id) {
+export async function deleteContact(id, { silent = false } = {}) {
   if (!isLive()) return PREVIEW;
   try {
     await api(`/api/contacts/${id}`, { method: 'DELETE' });
     state.contacts = state.contacts.filter((c) => c.id !== id);
     state.total = Math.max(0, state.total - 1);
     recomputeVisible();
-    emit();
+    if (!silent) emit();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
   }
 }
+
+/** Recompute the search view and notify subscribers — call once after a run of silent
+ *  writes (e.g. leaving the grid edit session) so every tab catches up in one paint. */
+export function resync() { recomputeVisible(); emit(); }
 
 export async function getContactDetail(id) {
   if (!isLive()) return { ok: false, preview: true, activities: [] };
