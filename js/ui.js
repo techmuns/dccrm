@@ -41,7 +41,7 @@ export function refreshIcons(root = document) {
  * The only widget container in the app. Never nested inside another card.
  * Returns { el, content, setState } — write into `content`, then setState('ready').
  */
-export function card({ title, subtitle, iconName, accent = '#4f46e5', className = '', actions = null } = {}) {
+export function card({ title, subtitle, iconName, accent = '#a83a5b', className = '', actions = null } = {}) {
   const content = h('div', { class: 'card-content' });
   const overlay = h('div', { class: 'card-overlay' });
 

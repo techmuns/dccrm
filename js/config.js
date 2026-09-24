@@ -6,17 +6,17 @@
 /* Fixed categorical palette. Assigned in this order, never cycled, never re-ordered.
    Past slot 8 a category falls back to NEUTRAL instead of inventing a ninth hue. */
 export const PALETTE = [
-  '#4f46e5', // indigo
-  '#06b6d4', // cyan
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#14b8a6', // teal
+  '#a83a5b', // rose — primary
+  '#4c6ea5', // slate blue
+  '#2e8b74', // jade — success
+  '#c08a2e', // amber
+  '#c0392b', // muted red
+  '#6f6b8f', // muted violet
+  '#c24e70', // bright rose
+  '#5b8c87', // muted teal
 ];
 
-export const NEUTRAL = '#94a3b8';   // everything past slot 8, and "Other"
+export const NEUTRAL = '#9a9aa0';   // everything past slot 8, and "Other" — platinum grey
 export const SURFACE = '#ffffff';   // card surface — also the gap colour between marks
 
 /* Dhamma's real fundraising pipeline, in funnel order. Hot and Dormant are real
@@ -37,6 +37,19 @@ export const ALL_STAGES = [...STAGE_ORDER, STAGE_HOT, STAGE_DORMANT];
 
 /* Stages that count as "actively working the relationship" (not Cold, Funded or parked). */
 export const ACTIVE_STAGES = ['Network', 'Qualified', 'In Diligence', 'Committed', 'Hot'];
+
+/* Fixed stage colours — one meaning, one hue, everywhere (funnel, chips, grid, drawer).
+   Enterprise/muted: rose + platinum + jade with slate and amber for the middle. */
+export const STAGE_COLORS = {
+  Cold: '#aeaeaa',           // platinum grey
+  Network: '#6b7a99',        // slate
+  Qualified: '#c08a2e',      // amber
+  'In Diligence': '#4c6ea5', // slate blue
+  Committed: '#a83a5b',      // rose
+  Funded: '#2e8b74',         // jade
+  Hot: '#c24e70',            // bright rose
+  Dormant: '#8f8f96',        // muted grey (parked)
+};
 
 /* The normalised contact shape. Order matters for table views in later tabs. */
 export const FIELDS = [

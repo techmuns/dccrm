@@ -15,9 +15,9 @@ import { SURFACE } from './config.js';
 import { withAlpha } from './colors.js';
 import { formatNumber, formatPercent, escapeHtml } from './util.js';
 
-const INK = '#475569';
-const INK_SOFT = '#94a3b8';
-const GRID = '#f1f5f9';
+const INK = '#4a4a52';
+const INK_SOFT = '#9a9aa0';
+const GRID = '#ededea';
 const FONT = "'Inter', system-ui, sans-serif";
 
 const baseText = { fontFamily: FONT, fontSize: 12, color: INK };
@@ -199,7 +199,7 @@ export function donutOption(items, { centerValue, centerLabel } = {}) {
       left: 'center',
       top: 'middle',
       children: [
-        { type: 'text', style: { text: String(centerValue), fill: '#0f172a', font: `700 26px ${FONT}`, textAlign: 'center', textVerticalAlign: 'middle' }, top: -10, left: 'center' },
+        { type: 'text', style: { text: String(centerValue), fill: '#23232a', font: `700 26px ${FONT}`, textAlign: 'center', textVerticalAlign: 'middle' }, top: -10, left: 'center' },
         { type: 'text', style: { text: centerLabel || '', fill: INK_SOFT, font: `500 11px ${FONT}`, textAlign: 'center', textVerticalAlign: 'middle' }, top: 12, left: 'center' },
       ],
     }],
@@ -435,12 +435,12 @@ export function lineOption(categories, seriesList, { asPercent = true } = {}) {
       borderWidth: 0,
       padding: 0,
       extraCssText: 'box-shadow:none;',
-      axisPointer: { type: 'line', lineStyle: { color: '#cbd5e1', width: 1, type: 'dashed' } },
+      axisPointer: { type: 'line', lineStyle: { color: '#c7c7c4', width: 1, type: 'dashed' } },
       formatter: (params) => {
         const title = params[0]?.axisValueLabel || '';
         const rows = params.map((p) => ({ label: `${p.marker ? '' : ''}${p.seriesName}`, value: fmt(p.value) }));
         return (
-          `<div class="tip" style="--tip-accent:${params[0]?.color || '#4f46e5'}">` +
+          `<div class="tip" style="--tip-accent:${params[0]?.color || '#a83a5b'}">` +
             `<div class="tip-head"><span class="tip-dot"></span><span class="tip-title">${escapeHtml(title)}</span></div>` +
             `<div class="tip-rows">${rows.map((r) => `<div class="tip-row"><span class="tip-key">${escapeHtml(r.label)}</span><span class="tip-val">${escapeHtml(String(r.value))}</span></div>`).join('')}</div>` +
           `</div>`

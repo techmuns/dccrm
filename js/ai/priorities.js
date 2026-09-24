@@ -19,10 +19,10 @@ export const QUIET_DAYS = 30;   // "gone quiet" threshold (a single constant, as
 const CAP = 15;
 
 const REASON = {
-  overdue: { label: 'Overdue', color: '#ef4444', icon: 'alarm-clock-off' },
-  hot: { label: 'Hot', color: '#ec4899', icon: 'flame' },
-  quiet: { label: 'Gone quiet', color: '#f59e0b', icon: 'clock' },
-  high: { label: 'High value', color: '#4f46e5', icon: 'star' },
+  overdue: { label: 'Overdue', color: '#c0392b', icon: 'alarm-clock-off' },
+  hot: { label: 'Hot', color: '#c24e70', icon: 'flame' },
+  quiet: { label: 'Gone quiet', color: '#c08a2e', icon: 'clock' },
+  high: { label: 'High value', color: '#a83a5b', icon: 'star' },
 };
 
 const isHigh = (c) => /^a$/i.test(tidy(c.tier)) || /^(high|p1|1)$/i.test(tidy(c.priority));

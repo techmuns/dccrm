@@ -24,21 +24,21 @@ export const THRESHOLDS = {
 };
 
 export const BUCKETS = [
-  { id: 'hot',  label: 'Hot',  hint: '70–100', color: '#ef4444', min: 70, max: 100 },
-  { id: 'warm', label: 'Warm', hint: '40–69',  color: '#f59e0b', min: 40, max: 69 },
-  { id: 'cold', label: 'Cold', hint: '0–39',   color: '#06b6d4', min: 0,  max: 39 },
+  { id: 'hot',  label: 'Hot',  hint: '70–100', color: '#c0392b', min: 70, max: 100 },
+  { id: 'warm', label: 'Warm', hint: '40–69',  color: '#c08a2e', min: 40, max: 69 },
+  { id: 'cold', label: 'Cold', hint: '0–39',   color: '#4c6ea5', min: 0,  max: 39 },
 ];
 
 export const SENTIMENTS = [
-  { id: 'Positive', color: '#10b981', icon: 'smile' },
-  { id: 'Neutral',  color: '#94a3b8', icon: 'meh' },
-  { id: 'Negative', color: '#ef4444', icon: 'frown' },
+  { id: 'Positive', color: '#2e8b74', icon: 'smile' },
+  { id: 'Neutral',  color: '#9a9aa0', icon: 'meh' },
+  { id: 'Negative', color: '#c0392b', icon: 'frown' },
 ];
 
 export const PRIORITIES = [
-  { id: 'High',   color: '#ef4444' },
-  { id: 'Medium', color: '#f59e0b' },
-  { id: 'Low',    color: '#94a3b8' },
+  { id: 'High',   color: '#c0392b' },
+  { id: 'Medium', color: '#c08a2e' },
+  { id: 'Low',    color: '#9a9aa0' },
 ];
 
 export const bucketOf = (score) => BUCKETS.find((b) => score >= b.min && score <= b.max) || BUCKETS[BUCKETS.length - 1];
