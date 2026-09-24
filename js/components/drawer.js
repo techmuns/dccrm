@@ -77,13 +77,13 @@ const wa = (n) => (n ? `<a href="https://wa.me/${n.replace(/[^\d]/g, '')}" targe
 
 /* ---------- AI insight panel (Feature 1) + reply cards (Feature 2) ---------- */
 
-const BAND_COLOR = { Hot: '#ef4444', Warm: '#f59e0b', Cold: '#06b6d4' };
-const SENTIMENT_COLOR = { Positive: '#10b981', Neutral: '#94a3b8', Negative: '#ef4444' };
+const BAND_COLOR = { Hot: '#c0392b', Warm: '#c08a2e', Cold: '#4c6ea5' };
+const SENTIMENT_COLOR = { Positive: '#2e8b74', Neutral: '#9a9aa0', Negative: '#c0392b' };
 
 function aiPanel(contact) {
   const scored = contact.aiScore != null;
   const band = contact.aiBand || (scored ? (contact.aiScore >= 70 ? 'Hot' : contact.aiScore >= 40 ? 'Warm' : 'Cold') : '');
-  const c = BAND_COLOR[band] || '#94a3b8';
+  const c = BAND_COLOR[band] || '#9a9aa0';
 
   const refresh = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' },
     [icon('sparkles', 'size-3.5'), h('span', { text: scored ? 'Refresh AI' : 'Score with AI' })]);
@@ -134,7 +134,7 @@ async function copyDraft(text, btn) {
 }
 
 function replyCard(r) {
-  const c = SENTIMENT_COLOR[r.sentiment] || '#94a3b8';
+  const c = SENTIMENT_COLOR[r.sentiment] || '#9a9aa0';
   const draft = tidy(r.draftReply);
   let draftBox = null;
   if (draft) {
@@ -293,7 +293,7 @@ async function loadDetail(contact, hosts) {
 
 /* ---------- tags ---------- */
 function renderTags(contact, host, tags) {
-  const chips = tags.map((t) => h('span', { class: 'cat-chip removable', style: `--c:${t.colour || '#94a3b8'}` }, [
+  const chips = tags.map((t) => h('span', { class: 'cat-chip removable', style: `--c:${t.colour || '#9a9aa0'}` }, [
     h('span', { class: 'dot' }), h('span', { class: 'lbl', text: t.name }),
     h('button', { class: 'chip-x', type: 'button', 'aria-label': `Remove ${t.name}`, onClick: async () => {
       const r = await store.removeTagFromContact(contact.id, t.id);

@@ -27,7 +27,7 @@ export function mountDataTable(container, {
   title,
   subtitle,
   iconName = 'table',
-  accent = '#4f46e5',
+  accent = '#a83a5b',
   actions = null,
   defaultSort,          // { key, dir }
   emptyMessage = 'No matching contacts.',

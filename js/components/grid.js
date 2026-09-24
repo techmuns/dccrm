@@ -34,7 +34,7 @@ export function mountGrid(container, {
   title = 'Contacts',
   subtitle = '',
   iconName = 'table',
-  accent = '#4f46e5',
+  accent = '#a83a5b',
   actions = null,
   onSaveCell,          // async (contact, patch) -> { ok, contact?, error? }
   onCreate,            // async (fields)          -> { ok, contact?, error? }

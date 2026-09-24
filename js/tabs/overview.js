@@ -141,7 +141,7 @@ export function render(container) {
   const askPanel = createAskPanel();
   const askCard = h('section', { class: 'card' }, [
     h('div', { class: 'card-head' }, [
-      h('span', { class: 'card-icon', style: '--accent:#8b5cf6' }, [icon('sparkles', 'size-[18px]')]),
+      h('span', { class: 'card-icon', style: '--accent:#6f6b8f' }, [icon('sparkles', 'size-[18px]')]),
       h('div', { class: 'min-w-0 flex-1' }, [
         h('h2', { class: 't-title', text: 'Ask' }),
         h('p', { class: 't-caption mt-0.5', text: 'Plain-English questions about your investors.' }),

@@ -11,9 +11,12 @@
  * There are eight hues and no ninth. Categories past slot eight take the neutral
  * slate, which reads honestly as "the tail" rather than as a made-up colour.
  */
-import { PALETTE, NEUTRAL, STAGE_DORMANT } from './config.js';
+import { PALETTE, NEUTRAL, STAGE_DORMANT, STAGE_COLORS } from './config.js';
 
 const dimensions = new Map(); // dimension name -> Map(category -> hex)
+
+/* Dimensions with a fixed, meaningful colour per value (not assigned by rank). */
+const FIXED = { stage: STAGE_COLORS };
 
 /** Assign hues to a dimension's categories, in the order given. Called once per load. */
 export function registerDimension(dimension, orderedNames) {
@@ -21,6 +24,9 @@ export function registerDimension(dimension, orderedNames) {
   let slot = 0;
   for (const name of orderedNames) {
     if (!name || map.has(name)) continue;
+    // A fixed-colour dimension (e.g. stage) keeps its meaningful hue, not a rank slot.
+    const fixed = FIXED[dimension]?.[name];
+    if (fixed) { map.set(name, fixed); continue; }
     // Dormant sits outside the pipeline, so it reads as parked rather than as a stage.
     if (name === STAGE_DORMANT) { map.set(name, NEUTRAL); continue; }
     map.set(name, slot < PALETTE.length ? PALETTE[slot] : NEUTRAL);
@@ -40,6 +46,8 @@ export function ensureCategory(dimension, name) {
   let map = dimensions.get(dimension);
   if (!map) { map = new Map(); dimensions.set(dimension, map); }
   if (map.has(name)) return;
+  const fixed = FIXED[dimension]?.[name];
+  if (fixed) { map.set(name, fixed); return; }
   if (name === STAGE_DORMANT) { map.set(name, NEUTRAL); return; }
   const used = [...map.values()].filter((c) => PALETTE.includes(c)).length;
   map.set(name, used < PALETTE.length ? PALETTE[used] : NEUTRAL);

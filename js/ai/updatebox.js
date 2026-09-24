@@ -242,7 +242,7 @@ export function createUpdatePanel() {
 
   const el = h('section', { class: 'card ai-update-card' }, [
     h('div', { class: 'card-head' }, [
-      h('span', { class: 'card-icon', style: '--accent:#4f46e5' }, [icon('wand-sparkles', 'size-[18px]')]),
+      h('span', { class: 'card-icon', style: '--accent:#a83a5b' }, [icon('wand-sparkles', 'size-[18px]')]),
       h('div', { class: 'min-w-0 flex-1' }, [
         h('h2', { class: 't-title', text: 'Update with AI' }),
         h('p', { class: 't-caption mt-0.5', text: 'Paste a call note, a WhatsApp or email thread, or several investors at once — we’ll file it for you.' }),

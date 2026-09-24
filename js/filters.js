@@ -51,11 +51,11 @@ export function bucketOf(contact) {
 }
 
 export const BUCKETS = [
-  { id: 'overdue', label: 'Overdue',      icon: 'alarm-clock-off', color: '#ef4444' },
-  { id: 'today',   label: 'Due today',    icon: 'calendar-clock',  color: '#f59e0b' },
-  { id: 'week',    label: 'Due this week', icon: 'calendar-days',   color: '#4f46e5' },
-  { id: 'later',   label: 'Later',        icon: 'calendar-range',  color: '#06b6d4' },
-  { id: 'none',    label: 'No date set',  icon: 'calendar-x',      color: '#94a3b8' },
+  { id: 'overdue', label: 'Overdue',      icon: 'alarm-clock-off', color: '#c0392b' },
+  { id: 'today',   label: 'Due today',    icon: 'calendar-clock',  color: '#c08a2e' },
+  { id: 'week',    label: 'Due this week', icon: 'calendar-days',   color: '#a83a5b' },
+  { id: 'later',   label: 'Later',        icon: 'calendar-range',  color: '#4c6ea5' },
+  { id: 'none',    label: 'No date set',  icon: 'calendar-x',      color: '#9a9aa0' },
 ];
 
 /** Count of contacts in each bucket. */
