@@ -11,6 +11,9 @@ import { mountChart, funnelOption, donutOption, hbarOption, barOption } from '..
 import { headlineNumbers, pipelineStages, series } from '../data.js';
 import { formatNumber, formatPercent, escapeHtml } from '../util.js';
 import { setQuery } from '../store.js';
+import { createUpdatePanel } from '../ai/updatebox.js';
+import { createAskPanel } from '../ai/askbox.js';
+import { createPrioritiesPanel } from '../ai/priorities.js';
 
 /** One chart card: a card, a chart that fills the space, and a legend under it. */
 function chartCard({ title, subtitle, iconName, accent, chartClass = '' }) {
@@ -133,7 +136,23 @@ export function render(container) {
     h('div', { class: 'lg:col-span-5 flex' }, [sources.el]),
   ]);
 
-  container.append(filterBar, tileRow, grid);
+  /* ---- the intelligence layer (Phase 3): update box, ask box, priorities ---- */
+  const updatePanel = createUpdatePanel();
+  const askPanel = createAskPanel();
+  const askCard = h('section', { class: 'card' }, [
+    h('div', { class: 'card-head' }, [
+      h('span', { class: 'card-icon', style: '--accent:#8b5cf6' }, [icon('sparkles', 'size-[18px]')]),
+      h('div', { class: 'min-w-0 flex-1' }, [
+        h('h2', { class: 't-title', text: 'Ask' }),
+        h('p', { class: 't-caption mt-0.5', text: 'Plain-English questions about your investors.' }),
+      ]),
+    ]),
+    h('div', { class: 'card-body' }, [askPanel.el]),
+  ]);
+  const aiTop = h('div', { class: 'grid grid-cols-1 lg:grid-cols-2 gap-4' }, [updatePanel.el, askCard]);
+  const priorities = createPrioritiesPanel();
+
+  container.append(filterBar, aiTop, tileRow, grid, priorities.el);
   refreshIcons(container);
 
   const widgets = [funnel, types, countries, sources];
@@ -172,6 +191,8 @@ export function render(container) {
 
   function update(state) {
     showFilterBar(state);
+    priorities.update(state);
+    aiTop.classList.toggle('hidden', state.mode === 'preview');   // AI needs the live database
 
     if (state.status === 'loading') return setAll('loading');
     if (state.status === 'error') return setAll('error', { message: state.error });

@@ -26,13 +26,14 @@ export async function onRequestPost({ params, request, env }) {
   if (!summary) return fail('An activity needs a short note.', 400);
   const type = TYPES.includes(String(body.type)) ? String(body.type) : 'Note';
   const occurredAt = String(body.occurredAt || '').trim() || now();
+  const source = String(body.source || '').trim().slice(0, 60) || null;   // e.g. "Prompt box", "AI draft"
   const ts = now();
   try {
     const contact = await env.DB.prepare('SELECT id FROM contacts WHERE id = ?').bind(id).first();
     if (!contact) return fail('Contact not found.', 404);
     const activity = await env.DB.prepare(
-      'INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, createdAt) VALUES (?, ?, ?, ?, ?, ?) RETURNING *',
-    ).bind(id, type, summary, occurredAt, currentUser(request), ts).first();
+      'INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    ).bind(id, type, summary, occurredAt, currentUser(request), source, ts).first();
     await env.DB.prepare('UPDATE contacts SET updatedAt = ?, updatedBy = ? WHERE id = ?').bind(ts, currentUser(request), id).run();
     return json({ activity }, 201);
   } catch (err) {

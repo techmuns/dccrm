@@ -20,6 +20,7 @@ import { mountDataTable } from '../components/datatable.js';
 import { mountGrid } from '../components/grid.js';
 import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
+import { openAskModal } from '../ai/askbox.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
 import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
 import { takeContactsPreset } from '../nav.js';
@@ -237,7 +238,9 @@ export function render(container) {
     icon('info', 'size-3.5'),
     h('span', { text: 'Enter / Tab to move · Esc to cancel · Ctrl/⌘+C copy · V paste · D fill down' }),
   ]);
-  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint]);
+  const askBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onClick: () => openAskModal() },
+    [icon('sparkles', 'size-3.5'), h('span', { text: 'Ask AI' })]);
+  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint, h('div', { class: 'ml-auto' }, [askBtn])]);
 
   function applyModeDom() {
     if (mode === 'edit' && !store.isLive()) mode = 'view';

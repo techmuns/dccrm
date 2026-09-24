@@ -18,6 +18,7 @@ import { insightsSource } from './ai-insights.js';
 import { parseSpreadsheet } from './upload.js';
 import { normalizeRows } from './data.js';
 import { openNewContact } from './components/drawer.js';
+import { openUpdateBox } from './ai/updatebox.js';
 import { h, icon, refreshIcons, toast } from './ui.js';
 import { debounce, formatDate, formatNumber } from './util.js';
 
@@ -30,6 +31,7 @@ const el = {
   view: document.querySelector('#view > div'),
   drop: document.getElementById('drop-overlay'),
   addBtn: document.getElementById('add-btn'),
+  updateAiBtn: document.getElementById('update-ai-btn'),
   exportBtn: document.getElementById('export-btn'),
   previewBanner: document.getElementById('preview-banner'),
 };
@@ -59,6 +61,7 @@ function renderChip(state) {
   el.previewBanner.hidden = !(preview && ready);
   el.addBtn.disabled = preview;
   el.uploadBtn.style.display = preview ? 'none' : '';
+  el.updateAiBtn.style.display = preview ? 'none' : '';
   el.exportBtn.style.display = preview ? 'none' : '';
   refreshIcons(el.previewBanner);
 
@@ -234,6 +237,8 @@ el.addBtn.addEventListener('click', () => {
   if (store.isLive()) openNewContact();
   else toast('Connect the database to add contacts.', 'warn');
 });
+
+el.updateAiBtn.addEventListener('click', () => openUpdateBox());
 
 /* drag a sheet anywhere onto the page */
 let dragDepth = 0;

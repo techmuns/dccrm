@@ -385,6 +385,36 @@ export async function listReplies(qs = '') {
   catch (err) { return { replies: [], error: err.message }; }
 }
 
+/* ---------- Phase 3 — prompt intelligence (input · read · output) ---------- */
+
+/** "Update with AI": send pasted notes, get back a validated preview list. Writes nothing. */
+export async function aiUpdate(text, hint = '') {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/ai/update', { method: 'POST', body: JSON.stringify({ text, hint }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/** "Ask": plain-English question → { answer, contactIds, columns }, grounded in the real book. */
+export async function aiAsk(question) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/ai/ask', { method: 'POST', body: JSON.stringify({ question }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/** Draft an outreach message for one contact (editable, never sent anywhere). */
+export async function draftMessage(id, intent, channel) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api(`/api/contacts/${id}/draft`, { method: 'POST', body: JSON.stringify({ intent, channel }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/** Optional AI "why now" lines for the priorities panel. Returns { whys:{} } on any failure. */
+export async function aiWhy(items) {
+  if (!isLive()) return { whys: {} };
+  try { return await api('/api/ai/why', { method: 'POST', body: JSON.stringify({ items }) }); }
+  catch { return { whys: {} }; }
+}
+
 /* ---------- campaigns (Feature 3) ---------- */
 export async function listCampaigns() {
   if (!isLive()) return [];

@@ -165,7 +165,7 @@ function renderReplies(host, replies) {
   refreshIcons(host);
 }
 
-function renderView(contact) {
+function renderView(contact, opts = {}) {
   refs.head.replaceChildren(
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
     h('div', { class: 'drawer-name', text: contact.fullName || 'Unnamed contact' }),
@@ -188,7 +188,7 @@ function renderView(contact) {
     h('div', { class: 'tasks-host' }),
   ]);
   const activitySection = h('div', { class: 'drawer-section' }, [
-    h('h3', {}, [icon('history', 'size-3.5'), 'Activity']),
+    h('h3', {}, [icon('history', 'size-3.5'), 'Memory & activity']),
     h('div', { class: 'activity-host' }, [h('p', { class: 't-caption', text: 'Loading…' })]),
   ]);
   const repliesSection = h('div', { class: 'drawer-section', style: 'display:none' }, [
@@ -198,6 +198,7 @@ function renderView(contact) {
 
   refs.body.replaceChildren(
     store.isLive() ? aiPanel(contact) : null,
+    store.isLive() ? draftPanel(contact, { autoOpen: !!opts.draft }) : null,
     section('Identity', 'user', [
       field('Full name', contact.fullName),
       field('Entity type', contact.entityType),
@@ -413,6 +414,7 @@ function renderTimeline(list, activities) {
     h('div', { class: 'min-w-0' }, [
       h('div', { class: 'tl-top' }, [
         h('span', { class: 'tl-type', text: a.type || 'Note' }),
+        a.source ? h('span', { class: 'tl-source', text: a.source }) : null,
         h('span', { class: 'tl-date', text: a.occurredAt ? formatDate(new Date(a.occurredAt)) : '' }),
       ]),
       h('p', { class: 'tl-summary', text: a.summary }),
@@ -445,6 +447,95 @@ function addActivityForm(contact, list) {
   return h('div', { class: 'activity-add' }, [
     h('div', { class: 'flex gap-2' }, [type, date]),
     h('div', { class: 'flex gap-2 mt-2' }, [note, save]),
+  ]);
+}
+
+/* ---------- draft a message (Phase 3) ---------- */
+
+const DRAFT_INTENTS = ['Warm intro', 'Gentle follow-up', 'Diligence follow-up', 'Re-engage (gone quiet)', 'Thank you / next step'];
+
+/** Re-fetch and repaint just the memory/activity timeline (after saving a draft as a note). */
+async function reloadActivity(contact) {
+  const host = refs?.body?.querySelector('.activity-host');
+  if (!host) return;
+  const detail = await store.getContactDetail(contact.id);
+  renderActivityInto(contact, host, detail.activities || []);
+}
+
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text;
+    document.body.append(ta); ta.select();
+    try { document.execCommand('copy'); } catch { /* ignore */ }
+    ta.remove();
+  }
+  toast('Copied to clipboard.', 'good');
+}
+
+/** A collapsible "Draft a message" panel: intent + channel → editable draft → copy / regenerate / save. */
+function draftPanel(contact, { autoOpen = false } = {}) {
+  const intentSel = h('select', { class: 'field-input', 'aria-label': 'Message intent' },
+    DRAFT_INTENTS.map((i) => h('option', { value: i, text: i })));
+  let channel = 'Email';
+  const emailBtn = h('button', { class: 'seg-btn is-on', type: 'button', text: 'Email' });
+  const waBtn = h('button', { class: 'seg-btn', type: 'button', text: 'WhatsApp' });
+  emailBtn.addEventListener('click', () => { channel = 'Email'; emailBtn.classList.add('is-on'); waBtn.classList.remove('is-on'); });
+  waBtn.addEventListener('click', () => { channel = 'WhatsApp'; waBtn.classList.add('is-on'); emailBtn.classList.remove('is-on'); });
+  const genBtn = h('button', { class: 'btn btn-primary btn-sm', type: 'button' }, [icon('sparkles', 'size-3.5'), h('span', { text: 'Generate' })]);
+
+  const subjectInput = h('input', { class: 'field-input draft-subject hidden', type: 'text', placeholder: 'Subject' });
+  const output = h('textarea', { class: 'field-input draft-output', rows: '7', placeholder: 'Your draft will appear here — edit it freely before you use it.' });
+  const copyBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('copy', 'size-3.5'), h('span', { text: 'Copy' })]);
+  const regenBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('refresh-cw', 'size-3.5'), h('span', { text: 'Regenerate' })]);
+  const saveBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('save', 'size-3.5'), h('span', { text: 'Save as note' })]);
+  const outWrap = h('div', { class: 'draft-out hidden' }, [subjectInput, output, h('div', { class: 'draft-actions' }, [copyBtn, regenBtn, saveBtn])]);
+
+  const fullText = () => (!subjectInput.classList.contains('hidden') && subjectInput.value ? `Subject: ${subjectInput.value}\n\n` : '') + output.value;
+
+  async function generate() {
+    genBtn.disabled = true; genBtn.replaceChildren(icon('loader-circle', 'size-3.5 animate-spin'), h('span', { text: 'Writing…' })); refreshIcons(genBtn);
+    const res = await store.draftMessage(contact.id, intentSel.value, channel);
+    genBtn.disabled = false; genBtn.replaceChildren(icon('sparkles', 'size-3.5'), h('span', { text: 'Generate' })); refreshIcons(genBtn);
+    if (!res.ok) {
+      toast(res.code === 'no-bedrock' ? 'Turn on AI (set BEDROCK_API_KEY) to draft messages.' : (res.error || 'Could not draft a message.'), res.code === 'no-bedrock' ? 'warn' : 'error');
+      return;
+    }
+    if (channel === 'Email' && res.subject) { subjectInput.value = res.subject; subjectInput.classList.remove('hidden'); }
+    else { subjectInput.value = ''; subjectInput.classList.add('hidden'); }
+    output.value = res.draft || '';
+    outWrap.classList.remove('hidden');
+    output.focus();
+  }
+  genBtn.addEventListener('click', generate);
+  regenBtn.addEventListener('click', generate);
+  copyBtn.addEventListener('click', () => copyText(fullText(), copyBtn));
+  saveBtn.addEventListener('click', async () => {
+    const text = output.value.trim();
+    if (!text) { toast('Nothing to save yet.', 'warn'); return; }
+    const prefix = `[${intentSel.value} · ${channel}]`;
+    const subj = (!subjectInput.classList.contains('hidden') && subjectInput.value) ? ` ${subjectInput.value} —` : '';
+    const r = await store.logActivity(contact.id, { type: 'Note', summary: `${prefix}${subj} ${text}`, source: 'AI draft' });
+    if (!r.ok) { toast(r.error || 'Could not save.', 'warn'); return; }
+    toast('Saved to memory.', 'good');
+    reloadActivity(contact);
+  });
+
+  const bodyWrap = h('div', { class: 'draft-body hidden' }, [
+    h('div', { class: 'draft-controls' }, [
+      h('label', { class: 'draft-field' }, [h('span', { class: 'draft-lbl', text: 'Purpose' }), intentSel]),
+      h('label', { class: 'draft-field' }, [h('span', { class: 'draft-lbl', text: 'Channel' }), h('div', { class: 'draft-seg' }, [emailBtn, waBtn])]),
+    ]),
+    h('div', { class: 'mt-2' }, [genBtn]),
+    outWrap,
+  ]);
+  const toggle = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('pen-line', 'size-3.5'), h('span', { text: 'Draft a message' })]);
+  toggle.addEventListener('click', () => { const wasHidden = bodyWrap.classList.contains('hidden'); bodyWrap.classList.toggle('hidden'); if (wasHidden) requestAnimationFrame(() => intentSel.focus()); });
+
+  if (autoOpen) bodyWrap.classList.remove('hidden');
+  return h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('pen-line', 'size-3.5'), 'Draft a message']),
+    toggle, bodyWrap,
   ]);
 }
 
@@ -560,10 +651,10 @@ function confirmDelete(contact) {
 
 /* ---------- open / close ---------- */
 
-export function openDrawer(contact) {
+export function openDrawer(contact, opts = {}) {
   if (!refs) build();
   lastFocus = document.activeElement;
-  renderView(contact);
+  renderView(contact, opts);
   refs.backdrop.classList.add('open');
   refs.panel.classList.add('open');
   refs.backdrop.removeAttribute('aria-hidden');

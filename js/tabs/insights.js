@@ -15,6 +15,8 @@ import { colorOf } from '../colors.js';
 import { createChartCard } from '../components/chartcard.js';
 import { createSourceNote, readJsonFile } from '../components/source-note.js';
 import { openDrawer } from '../components/drawer.js';
+import { createAskPanel } from '../ai/askbox.js';
+import { createPrioritiesPanel } from '../ai/priorities.js';
 import {
   insightsSource, joinInsights, priorityQueue, quietWarm, sentimentSplit, scoreBuckets, priorityColor,
 } from '../ai-insights.js';
@@ -186,7 +188,15 @@ export function render(container) {
     h('div', { class: 'lg:col-span-5' }, [quietCard.el]),
   ]);
 
-  container.append(topNote, overview, priorityCardEl.el, bottom);
+  /* Phase 3 — an Ask box and the rule-based priorities list, at the top of AI Insights. */
+  const askPanel = createAskPanel();
+  const askCard = card({ title: 'Ask', subtitle: 'Plain-English questions about your investors.', iconName: 'sparkles', accent: PALETTE[5] });
+  askCard.content.append(askPanel.el);
+  askCard.setState('ready');
+  const priorities = createPrioritiesPanel();
+  const aiRow = h('div', { class: 'grid grid-cols-1 lg:grid-cols-2 gap-4 items-start' }, [askCard.el, priorities.el]);
+
+  container.append(topNote, aiRow, overview, priorityCardEl.el, bottom);
   refreshIcons(container);
 
   let latestState = null;
@@ -262,7 +272,7 @@ export function render(container) {
   if (insightsSource.state.status === 'loading') insightsSource.init();
 
   return {
-    update(state) { latestState = state; rebuild(); },
+    update(state) { latestState = state; priorities.update(state); rebuild(); },
     destroy() {
       unsub();
       for (const w of [sentiment, buckets]) w.destroy();

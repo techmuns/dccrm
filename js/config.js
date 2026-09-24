@@ -80,6 +80,16 @@ export const HEADER_MAP = {
   roughnotesforraghav: 'roughNotes', roughnotes: 'roughNotes', roughnote: 'roughNotes',
 };
 
+/* Friendly, jargon-free labels for each field — shared by the AI update preview,
+   the Ask table and the priorities panel so a column always reads the same. */
+export const FIELD_LABELS = {
+  fullName: 'Full name', entityType: 'Entity type', role: 'Role', organisation: 'Organisation', designation: 'Designation',
+  email: 'Email', phone: 'Phone', altPhone: 'Alt phone', whatsapp: 'WhatsApp', whatsappOptIn: 'WhatsApp opt-in',
+  country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority',
+  referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action', nextActionDate: 'Next action date',
+  relationshipOwner: 'Relationship owner', source: 'Source / channel', signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes',
+};
+
 /* Fields searched by the header search box. */
 export const SEARCH_FIELDS = [
   'fullName', 'organisation', 'designation', 'email', 'country', 'city',
