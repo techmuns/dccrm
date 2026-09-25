@@ -8,6 +8,26 @@ const parseId = (params) => {
   return Number.isInteger(id) && id > 0 ? id : null;
 };
 
+/**
+ * Record a "Stage change" activity when an edit genuinely moved the contact between stages.
+ * Written to the same activities table the drawer / grid / prompt box already read, so the move
+ * shows on the contact timeline. Grounded: it fires only on a real change. The `x-change-source`
+ * header (set by the store) says where the move came from — Grid edit / Prompt box / Manual.
+ * Called only when the payload touched `stage`, so `priorStage` is the real pre-edit value.
+ */
+async function logStageChange(env, request, id, priorStage, updated) {
+  const oldS = String(priorStage ?? '').trim();
+  const newS = String(updated?.stage ?? '').trim();
+  if (oldS === newS) return;                                   // same stage re-selected — no move
+  const source = (request.headers.get('x-change-source') || 'Manual').trim().slice(0, 60) || 'Manual';
+  const ts = now();
+  try {
+    await env.DB.prepare(
+      'INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).bind(id, 'Stage change', `Stage: ${oldS || '—'} → ${newS || '—'}`, ts, currentUser(request), source, ts).run();
+  } catch { /* best-effort; the contact update already succeeded */ }
+}
+
 export async function onRequestGet({ params, env }) {
   if (!env.DB) return noDb();
   const id = parseId(params);
@@ -37,12 +57,21 @@ export async function onRequestPut({ params, request, env }) {
   } catch (err) {
     return fail(err.message, 400);
   }
+  // Capture the prior stage before the write, so a genuine stage move can be recorded on the
+  // contact's timeline (below). Only needed when this edit actually touches the stage.
+  let priorStage = null;
+  if ('stage' in values) {
+    const before = await env.DB.prepare('SELECT stage FROM contacts WHERE id = ?').bind(id).first();
+    if (!before) return fail('Contact not found.', 404);
+    priorStage = before.stage;
+  }
   const cols = WRITABLE.filter((c) => c in values);
   const setSql = [...cols.map((c) => `${c} = ?`), 'updatedAt = ?', 'updatedBy = ?'].join(', ');
   const binds = [...cols.map((c) => values[c]), now(), currentUser(request), id];
   try {
     const updated = await env.DB.prepare(`UPDATE contacts SET ${setSql} WHERE id = ? RETURNING *`).bind(...binds).first();
     if (!updated) return fail('Contact not found.', 404);
+    if ('stage' in values) await logStageChange(env, request, id, priorStage, updated);
     return json({ contact: updated });
   } catch (err) {
     if (/UNIQUE/i.test(err.message)) return fail('Another contact already uses that email.', 409);

@@ -10,6 +10,7 @@ import { ALL_STAGES } from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { formatDate, daysFromToday, escapeHtml, tidy } from '../util.js';
+import { openTimeline } from './timeline.js';
 import * as store from '../store.js';
 
 let refs = null;
@@ -251,8 +252,12 @@ function renderView(contact, opts = {}) {
     activitySection,
   );
 
-  /* footer: edit / delete (live only) + quick contact actions */
+  /* footer: timeline (any real contact) + edit / delete (live only) + quick contact actions */
   const footChildren = [];
+  if (contact.id != null) {
+    footChildren.push(h('button', { class: 'btn btn-quiet', type: 'button', title: 'Open the full relationship timeline',
+      onClick: () => openTimeline(contact) }, [icon('history', 'size-4'), h('span', { class: 'hidden sm:inline', text: 'Timeline' })]));
+  }
   if (store.isLive()) {
     footChildren.push(
       h('button', { class: 'btn btn-primary', type: 'button', style: 'flex:1', onClick: () => renderEdit(contact, { create: false }) },

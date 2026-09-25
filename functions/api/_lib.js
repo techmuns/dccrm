@@ -140,6 +140,8 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'roughNotes', 'TEXT'],
   // Phase-3: where a logged note came from (e.g. "Prompt box", "AI draft").
   ['activities', 'source', 'TEXT'],
+  // Phase-6: when a task was marked done, so completed follow-ups land on the timeline.
+  ['tasks', 'completedAt', 'TEXT'],
 ];
 
 /* Old pipeline vocabulary → Dhamma's real stages. Applied once to a legacy demo

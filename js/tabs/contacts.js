@@ -20,6 +20,7 @@ import { mountDataTable } from '../components/datatable.js';
 import { mountGrid } from '../components/grid.js';
 import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
+import { openTimeline } from '../components/timeline.js';
 import { openAskModal } from '../ai/askbox.js';
 import { openModal } from '../components/modal.js';
 import { needsOutreachIds } from '../ai/priorities.js';
@@ -91,6 +92,18 @@ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); retur
 /* keep clicks on an inline editor from opening the row's drawer */
 function stopBubbling(el) {
   for (const type of ['click', 'mousedown', 'keydown']) el.addEventListener(type, (e) => e.stopPropagation());
+}
+
+/** A small row-action button that opens the contact's timeline (without opening the drawer). */
+function timelineAction(contact) {
+  const btn = h('button', { class: 'row-action', type: 'button', title: 'View timeline',
+    'aria-label': `View timeline for ${contact.fullName || 'contact'}` }, [icon('history', 'size-4')]);
+  // Keep a click / Enter on the action from ALSO opening the row's drawer, but let other keys
+  // (notably Escape, which closes the timeline modal) bubble normally.
+  btn.addEventListener('mousedown', (e) => e.stopPropagation());
+  btn.addEventListener('click', (e) => { e.stopPropagation(); openTimeline(contact); });
+  btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); });
+  return btn;
 }
 
 export function render(container) {
@@ -166,6 +179,7 @@ export function render(container) {
     { key: 'nextActionDate', label: 'Next action', cellClass: 'col-next', defaultSortDir: 'asc',
       sortValue: (r) => r.nextActionAt,
       render: (r) => (store.isLive() ? nextDateEditor(r) : dateCell(r.nextActionAt, { markOverdue: true })) },
+    { key: '_timeline', label: '', cellClass: 'col-actions', sortable: false, render: timelineAction },
   ];
 
   const tableHost = h('div', { class: 'flex flex-1 min-h-0' });
@@ -232,7 +246,7 @@ export function render(container) {
     subtitle: 'Click a cell to edit · Enter / Tab to move · changes save automatically.',
     iconName: 'sheet',
     accent: PALETTE[0],
-    onSaveCell: (contact, patch) => store.updateContact(contact.id, patch, { optimistic: false, silent: true }),
+    onSaveCell: (contact, patch) => store.updateContact(contact.id, patch, { optimistic: false, silent: true, source: 'Grid edit' }),
     onCreate: (fields) => store.createContact(fields, { silent: true }),
     onDelete: (contact) => store.deleteContact(contact.id, { silent: true }),
   });
