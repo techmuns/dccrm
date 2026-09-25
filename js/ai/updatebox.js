@@ -162,7 +162,7 @@ async function applyAll(cards, applyBtn, done) {
         if (!res.ok) { failed += 1; continue; }
         id = res.contact.id; created += 1;
       } else if (Object.keys(p.fields).length) {
-        const res = await store.updateContact(id, p.fields, { optimistic: false, silent: true });
+        const res = await store.updateContact(id, p.fields, { optimistic: false, silent: true, source: 'Prompt box' });
         if (!res.ok) { failed += 1; continue; }
         updated += 1;
       }

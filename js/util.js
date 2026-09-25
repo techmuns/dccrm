@@ -95,6 +95,22 @@ export const formatDate = (date) =>
 export const formatDateTime = (date) =>
   date ? date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
+/** A short, human "when" for a date: Today / Yesterday / 3 days ago / in 4 days / 2 months ago. */
+export function relativeDay(date) {
+  const d = daysFromToday(date);
+  if (d == null) return '';
+  if (d === 0) return 'Today';
+  if (d === -1) return 'Yesterday';
+  if (d === 1) return 'Tomorrow';
+  const ago = d < 0;
+  const n = Math.abs(d);
+  const span = n < 7 ? `${n} days`
+    : n < 30 ? `${Math.round(n / 7)} week${Math.round(n / 7) === 1 ? '' : 's'}`
+      : n < 365 ? `${Math.round(n / 30)} month${Math.round(n / 30) === 1 ? '' : 's'}`
+        : `${Math.round(n / 365)} year${Math.round(n / 365) === 1 ? '' : 's'}`;
+  return ago ? `${span} ago` : `in ${span}`;
+}
+
 /* ---------- numbers ---------- */
 
 export const formatNumber = (n) => Number(n || 0).toLocaleString();

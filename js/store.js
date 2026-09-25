@@ -173,7 +173,7 @@ export async function createContact(fields, { silent = false } = {}) {
  * server confirms (or we roll back on failure). `patch` may be one field (quick
  * inline edits) or many (the full edit form).
  */
-export async function updateContact(id, patch, { optimistic = true, silent = false } = {}) {
+export async function updateContact(id, patch, { optimistic = true, silent = false, source = 'Manual' } = {}) {
   if (!isLive()) return PREVIEW;
   const index = state.contacts.findIndex((c) => c.id === id);
   const previous = index >= 0 ? state.contacts[index] : null;
@@ -187,7 +187,14 @@ export async function updateContact(id, patch, { optimistic = true, silent = fal
   }
 
   try {
-    const { contact } = await api(`/api/contacts/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
+    // `x-change-source` tags any resulting stage-change activity with where the edit came
+    // from (Grid edit / Prompt box / Manual). The move itself is detected + logged server-
+    // side (in the contacts PUT), so it is recorded no matter how a caller mutates its copy.
+    const { contact } = await api(`/api/contacts/${id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', 'x-change-source': source || 'Manual' },
+      body: JSON.stringify(patch),
+    });
     const confirmed = normalizeContact(contact);
     ensureColours(confirmed);
     const at = state.contacts.findIndex((c) => c.id === id);

@@ -1,5 +1,5 @@
 /** /api/tasks/:id — edit / mark done (PUT), delete (DELETE). */
-import { json, fail, noDb, readJson, ensureSchema } from '../_lib.js';
+import { json, fail, noDb, now, readJson, ensureSchema } from '../_lib.js';
 const parseId = (params) => { const id = parseInt(params.id, 10); return Number.isInteger(id) && id > 0 ? id : null; };
 
 export async function onRequestPut({ params, request, env }) {
@@ -10,7 +10,13 @@ export async function onRequestPut({ params, request, env }) {
   try { await ensureSchema(env); body = await readJson(request); } catch (err) { return fail(err.message, 400); }
   const sets = [];
   const binds = [];
-  if ('done' in body) { sets.push('done = ?'); binds.push(body.done ? 1 : 0); }
+  if ('done' in body) {
+    const done = body.done ? 1 : 0;
+    sets.push('done = ?'); binds.push(done);
+    // Stamp when it was completed (and clear it when re-opened) so completed follow-ups
+    // can be placed on the contact timeline at a real date.
+    sets.push('completedAt = ?'); binds.push(done ? now() : null);
+  }
   if ('title' in body) { const t = String(body.title || '').trim(); if (!t) return fail('Title cannot be empty.', 400); sets.push('title = ?'); binds.push(t); }
   if ('dueDate' in body) { sets.push('dueDate = ?'); binds.push(String(body.dueDate || '').trim() || null); }
   if ('owner' in body) { sets.push('owner = ?'); binds.push(String(body.owner || '').trim() || null); }
