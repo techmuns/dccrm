@@ -28,10 +28,11 @@ export async function onRequestPost({ request, env }) {
   const contactId = body.contactId != null && body.contactId !== '' ? parseInt(body.contactId, 10) : null;
   const dueDate = String(body.dueDate || '').trim() || null;
   const owner = String(body.owner || '').trim() || null;
+  const intent = String(body.intent || '').trim().slice(0, 60) || null;   // suggested draft intent
   try {
     const task = await env.DB.prepare(
-      'INSERT INTO tasks (contactId, title, dueDate, done, owner, createdBy, createdAt) VALUES (?, ?, ?, 0, ?, ?, ?) RETURNING *',
-    ).bind(contactId, title, dueDate, owner, currentUser(request), now()).first();
+      'INSERT INTO tasks (contactId, title, dueDate, done, owner, intent, createdBy, createdAt) VALUES (?, ?, ?, 0, ?, ?, ?, ?) RETURNING *',
+    ).bind(contactId, title, dueDate, owner, intent, currentUser(request), now()).first();
     return json({ task }, 201);
   } catch (err) {
     return fail(`Could not create the task: ${err.message}`, 500);

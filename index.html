@@ -670,6 +670,67 @@ textarea.field-input { resize:vertical; min-height:3.2rem; line-height:1.5; }
 .tlm-empty { display:flex; flex-direction:column; align-items:center; text-align:center; gap:.4rem; padding:2.5rem 1rem; color:var(--ink-3); }
 .tlm-empty-t { font-size:var(--fs-body); font-weight:600; color:var(--ink-2); margin:0; }
 
+/* ---------- follow-ups (reminders hub) ---------- */
+.fu-strip { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
+.fu-chip { display:inline-flex; align-items:center; gap:.4rem; font-size:var(--fs-caption); font-weight:600; color:var(--ink-2);
+  background:#fff; border:1px solid var(--line); border-left:3px solid var(--c); border-radius:4px; padding:.35rem .6rem; cursor:pointer;
+  transition:background .12s ease, border-color .12s ease; }
+.fu-chip:hover { background:var(--bg); }
+.fu-chip.is-empty { opacity:.5; }
+.fu-chip-n { font-variant-numeric:tabular-nums; color:var(--ink); background:var(--bg); border-radius:3px; padding:0 .3rem; }
+.fu-group { margin-bottom:1.1rem; }
+.fu-group:last-child { margin-bottom:0; }
+.fu-group-head { display:flex; align-items:center; gap:.4rem; color:var(--c); font-size:var(--fs-caption); font-weight:700;
+  text-transform:uppercase; letter-spacing:.04em; padding:.1rem 0 .5rem; border-bottom:1px solid var(--line-soft); margin-bottom:.5rem; }
+.fu-group-n { color:var(--ink-3); font-weight:600; }
+.fu-rows { display:flex; flex-direction:column; gap:.4rem; }
+.fu-row, .fu-sug { display:flex; align-items:center; gap:.7rem; padding:.55rem .7rem; border:1px solid var(--line-soft); border-radius:4px; background:#fff; }
+.fu-row:hover, .fu-sug:hover { border-color:var(--line); background:var(--bg); }
+.fu-check { width:26px; height:26px; flex:none; border-radius:50%; border:1.5px solid var(--line-strong); background:#fff; color:transparent;
+  display:grid; place-items:center; cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
+.fu-check:hover { border-color:var(--jade); color:var(--jade); background:color-mix(in srgb, var(--jade) 12%, #fff); }
+.fu-main { flex:1; min-width:0; }
+.fu-line1 { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+.fu-name { display:flex; align-items:baseline; gap:.4rem; min-width:0; max-width:100%; background:none; border:none; padding:0; cursor:pointer; text-align:left; }
+button.fu-name:hover .nm { color:var(--c1); text-decoration:underline; }
+.fu-name .nm { font-weight:600; color:var(--ink); font-size:var(--fs-body); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fu-name .sub { font-size:var(--fs-caption); color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fu-note { font-size:var(--fs-body); color:var(--ink-2); margin-top:.15rem; }
+.fu-right { display:flex; flex-direction:column; align-items:flex-end; gap:.35rem; flex:none; }
+.fu-actions { display:flex; align-items:center; gap:.25rem; }
+.fu-act { width:28px; height:28px; border-radius:4px; display:grid; place-items:center; color:var(--ink-3); background:transparent; border:1px solid transparent; cursor:pointer; transition:color .12s ease, background .12s ease, border-color .12s ease; }
+.fu-act:hover { color:var(--c1); background:var(--sel); border-color:var(--sel-line); }
+.fu-resched { display:inline-flex; }
+.fu-date { font-family:inherit; font-size:var(--fs-caption); border:1px solid var(--line); border-radius:4px; padding:.2rem .3rem; color:var(--ink); }
+.fu-badge { font-size:.6875rem; font-weight:700; border-radius:4px; padding:.1rem .4rem; white-space:nowrap; }
+.fu-badge--overdue { color:#fff; background:var(--danger); }
+.fu-badge--today { color:#fff; background:var(--amber); }
+.fu-badge--soon { color:var(--ink-2); background:var(--bg); border:1px solid var(--line); }
+.fu-badge--future { color:var(--ink-3); background:var(--bg); border:1px solid var(--line); }
+.fu-badge--none { color:var(--ink-3); background:var(--bg); border:1px dashed var(--line); }
+.fu-showall { display:inline-flex; align-items:center; gap:.3rem; margin-top:.5rem; font-size:var(--fs-caption); font-weight:600; color:var(--c1);
+  background:none; border:none; cursor:pointer; }
+.fu-showall:hover { text-decoration:underline; }
+.fu-empty { display:flex; flex-direction:column; align-items:center; text-align:center; gap:.4rem; padding:2rem 1rem; color:var(--ink-3); }
+.fu-empty-t { font-size:var(--fs-body); font-weight:600; color:var(--ink-2); margin:0; }
+.fu-sug-why { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top:.2rem; }
+.fu-why-tag { font-size:var(--fs-caption); color:var(--amber); font-weight:600; }
+.fu-sug-step { font-size:var(--fs-caption); color:var(--ink-3); }
+
+/* drawer: follow-up plan (cadences + manual reminder + post-log hint) */
+.cadence-row { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-bottom:.6rem; }
+.cadence-btn { display:flex; flex-direction:column; align-items:flex-start; gap:.15rem; padding:.5rem .55rem; border:1px solid var(--line); border-radius:4px;
+  background:#fff; cursor:pointer; color:var(--ink-2); transition:color .12s ease, background .12s ease, border-color .12s ease; }
+.cadence-btn:hover { border-color:var(--c1); background:var(--sel); color:var(--c1); }
+.cadence-btn .cad-name { font-weight:600; font-size:var(--fs-body); }
+.cadence-btn .cad-steps { font-size:.625rem; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.reminder-add { background:var(--bg); border:1px solid var(--line-soft); border-radius:4px; padding:.5rem; }
+.fu-hint { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-top:.6rem; padding:.45rem .55rem; background:var(--sel); border:1px solid var(--sel-line); border-radius:4px; }
+.fu-hint-l { font-size:var(--fs-caption); font-weight:600; color:var(--c1); }
+.fu-hint-btn { font-size:var(--fs-caption); font-weight:600; color:var(--ink-2); background:#fff; border:1px solid var(--line); border-radius:999px; padding:.15rem .5rem; cursor:pointer; }
+.fu-hint-btn:hover { border-color:var(--c1); color:var(--c1); }
+.fu-hint-x { margin-left:auto; width:20px; height:20px; display:grid; place-items:center; color:var(--ink-3); background:none; border:none; cursor:pointer; }
+
 /* confirm-delete bar */
 .confirm-bar { display:flex; flex-direction:column; gap:.5rem; width:100%; }
 .confirm-bar .flex { justify-content:flex-end; }

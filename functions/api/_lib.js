@@ -142,6 +142,8 @@ const COLUMN_MIGRATIONS = [
   ['activities', 'source', 'TEXT'],
   // Phase-6: when a task was marked done, so completed follow-ups land on the timeline.
   ['tasks', 'completedAt', 'TEXT'],
+  // Phase-7: the suggested message intent for a follow-up reminder (drives the AI draft).
+  ['tasks', 'intent', 'TEXT'],
 ];
 
 /* Old pipeline vocabulary → Dhamma's real stages. Applied once to a legacy demo

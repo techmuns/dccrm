@@ -20,6 +20,7 @@ export async function onRequestPut({ params, request, env }) {
   if ('title' in body) { const t = String(body.title || '').trim(); if (!t) return fail('Title cannot be empty.', 400); sets.push('title = ?'); binds.push(t); }
   if ('dueDate' in body) { sets.push('dueDate = ?'); binds.push(String(body.dueDate || '').trim() || null); }
   if ('owner' in body) { sets.push('owner = ?'); binds.push(String(body.owner || '').trim() || null); }
+  if ('intent' in body) { sets.push('intent = ?'); binds.push(String(body.intent || '').trim().slice(0, 60) || null); }
   if ('contactId' in body) { sets.push('contactId = ?'); binds.push(body.contactId != null && body.contactId !== '' ? parseInt(body.contactId, 10) : null); }
   if (!sets.length) return fail('Nothing to update.', 400);
   const task = await env.DB.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ? RETURNING *`).bind(...binds, id).first();

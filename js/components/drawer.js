@@ -11,6 +11,7 @@ import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { formatDate, daysFromToday, escapeHtml, tidy } from '../util.js';
 import { openTimeline } from './timeline.js';
+import { CADENCES, applyCadence, addReminder, dueInDays } from '../cadences.js';
 import * as store from '../store.js';
 
 let refs = null;
@@ -248,6 +249,7 @@ function renderView(contact, opts = {}) {
     ]) : null,
     store.isLive() ? repliesSection : null,
     store.isLive() ? tagsSection : null,
+    store.isLive() ? followupPlan(contact) : null,
     store.isLive() ? tasksSection : null,
     activitySection,
   );
@@ -397,6 +399,80 @@ function addTaskForm(contact, host) {
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
+/* ---------- follow-up plan (cadences + manual reminder) ---------- */
+
+/** Reload just the drawer's Tasks list (after a cadence/reminder creates tasks). */
+function refreshDrawerTasks(contact) {
+  const host = refs?.body?.querySelector('.tasks-host');
+  if (host) reloadTasks(contact, host);
+}
+
+function followupPlan(contact) {
+  const applyCad = async (key, btn) => {
+    btn.disabled = true;
+    const r = await applyCadence(contact, key);
+    btn.disabled = false;
+    if (!r.ok) { toast(r.error || 'Could not apply the cadence.', 'warn'); return; }
+    toast(`${r.name} — ${r.created} follow-up${r.created === 1 ? '' : 's'} scheduled.`, 'good');
+    refreshDrawerTasks(contact);
+  };
+  const cadBtns = CADENCES.map((cad) => {
+    const b = h('button', { class: 'cadence-btn', type: 'button', title: cad.desc }, [
+      icon(cad.icon, 'size-4'),
+      h('span', { class: 'cad-name', text: cad.name }),
+      h('span', { class: 'cad-steps', text: cad.steps.map((s) => `+${s.offset}d`).join(' · ') }),
+    ]);
+    b.addEventListener('click', () => applyCad(cad.key, b));
+    return b;
+  });
+
+  const dateInput = h('input', { class: 'field-input', type: 'date', value: dueInDays(7) });
+  const noteInput = h('input', { class: 'field-input flex-1', type: 'text', placeholder: 'Reminder note (e.g. Send the deck)' });
+  const addBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('plus', 'size-3.5'), 'Add']);
+  const addManual = async () => {
+    const r = await addReminder(contact, { dueDate: dateInput.value, title: noteInput.value.trim() });
+    if (!r.ok) { toast(r.error || 'Could not add that reminder.', 'warn'); return; }
+    noteInput.value = '';
+    toast('Reminder added.', 'good');
+    refreshDrawerTasks(contact);
+  };
+  addBtn.addEventListener('click', addManual);
+  noteInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addManual(); });
+
+  return h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('bell-ring', 'size-3.5'), 'Follow-up plan']),
+    h('p', { class: 't-caption mb-2', text: 'Apply a cadence to auto-schedule reminders, or add a single one.' }),
+    h('div', { class: 'cadence-row' }, cadBtns),
+    h('div', { class: 'reminder-add' }, [h('div', { class: 'flex gap-2' }, [dateInput, noteInput, addBtn])]),
+  ]);
+}
+
+/* A compact "Set a follow-up?" prompt shown right after logging an update. */
+function followupHint(contact) {
+  const hint = h('div', { class: 'fu-hint hidden' });
+  const show = () => {
+    hint.replaceChildren(
+      h('span', { class: 'fu-hint-l', text: 'Set a follow-up?' }),
+      ...CADENCES.map((cad) => {
+        const b = h('button', { class: 'fu-hint-btn', type: 'button', title: cad.desc, text: cad.name });
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          const r = await applyCadence(contact, cad.key);
+          if (!r.ok) { b.disabled = false; toast(r.error || 'Could not apply.', 'warn'); return; }
+          toast(`${r.name} — ${r.created} scheduled.`, 'good');
+          refreshDrawerTasks(contact);
+          hint.classList.add('hidden');
+        });
+        return b;
+      }),
+      h('button', { class: 'fu-hint-x', type: 'button', title: 'Not now', onClick: () => hint.classList.add('hidden') }, [icon('x', 'size-3')]),
+    );
+    hint.classList.remove('hidden');
+    refreshIcons(hint);
+  };
+  return { el: hint, show };
+}
+
 /* ---------- activity timeline ---------- */
 
 const ACTIVITY_TYPES = ['Note', 'Call', 'Email', 'Meeting', 'WhatsApp', 'Other'];
@@ -433,6 +509,7 @@ function addActivityForm(contact, list) {
   const note = h('input', { class: 'field-input flex-1', type: 'text', placeholder: 'What happened? (e.g. Sent the deck)' });
   const date = h('input', { class: 'field-input', type: 'date', value: new Date().toISOString().slice(0, 10) });
   const save = h('button', { class: 'btn btn-quiet', type: 'button' }, [icon('plus', 'size-4'), 'Log']);
+  const hint = store.isLive() ? followupHint(contact) : null;
 
   save.addEventListener('click', async () => {
     const summary = note.value.trim();
@@ -447,11 +524,13 @@ function addActivityForm(contact, list) {
     renderTimeline(list, detail.activities || []);
     refreshIcons(list);
     toast('Activity logged.', 'good');
+    hint?.show();   // offer to schedule a follow-up right after logging
   });
 
   return h('div', { class: 'activity-add' }, [
     h('div', { class: 'flex gap-2' }, [type, date]),
     h('div', { class: 'flex gap-2 mt-2' }, [note, save]),
+    hint?.el,
   ]);
 }
 
