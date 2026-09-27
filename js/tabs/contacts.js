@@ -27,7 +27,7 @@ import { needsOutreachIds } from '../ai/priorities.js';
 import { exportContactsXlsx, sendListParts, exportSendListXlsx, exportSendListCsv, sendListTsv, copyToClipboard } from '../exports.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
 import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
-import { takeContactsPreset } from '../nav.js';
+import { takeContactsPreset, goToCompose } from '../nav.js';
 import * as store from '../store.js';
 
 /** Stage-split items covering EVERYONE in the selection, in pipeline order. */
@@ -376,6 +376,7 @@ export function render(container) {
       stageSel, ownerSel,
       h('div', { class: 'flex items-center gap-1' }, [tagInput, tagList, tagGo]),
       h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onClick: exportSelected }, [icon('download', 'size-3.5'), 'Export']),
+      h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'Compose an email to these contacts with AI', onClick: () => goToCompose(selectedIds) }, [icon('mail-plus', 'size-3.5'), 'Compose']),
       h('button', { class: 'btn btn-danger btn-sm', type: 'button', onClick: () => {
         if (confirm(`Delete ${n} selected contact${n === 1 ? '' : 's'}? This cannot be undone.`)) doBulk({ action: 'delete' }, 'Deleted');
       } }, [icon('trash-2', 'size-3.5'), 'Delete']),

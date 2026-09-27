@@ -100,6 +100,10 @@ const CREATE_STATEMENTS = [
      FOREIGN KEY (contactId) REFERENCES contacts(id) ON DELETE CASCADE,
      FOREIGN KEY (tagId) REFERENCES tags(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS segments (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, filtersJson TEXT, createdAt TEXT)`,
+  // Compose (Phase 8): saved investor emails the team can reuse later.
+  `CREATE TABLE IF NOT EXISTS saved_emails (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, subject TEXT, preheader TEXT, body TEXT,
+     createdBy TEXT, createdAt TEXT NOT NULL, updatedAt TEXT)`,
   // Email-reply intelligence (Feature 2): one row per ingested reply, matched to a contact by sender email.
   `CREATE TABLE IF NOT EXISTS replies (
      id INTEGER PRIMARY KEY AUTOINCREMENT, contactId INTEGER, fromEmail TEXT, fromName TEXT, subject TEXT,

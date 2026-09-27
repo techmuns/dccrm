@@ -12,6 +12,7 @@ import { render as renderOverview } from './tabs/overview.js';
 import { render as renderContacts } from './tabs/contacts.js';
 import { render as renderFollowups } from './tabs/followups.js';
 import { render as renderCampaigns } from './tabs/campaigns.js';
+import { render as renderCompose } from './tabs/compose.js';
 import { render as renderInsights } from './tabs/insights.js';
 import { campaignsSource } from './campaigns.js';
 import { insightsSource } from './ai-insights.js';
@@ -42,6 +43,7 @@ registerTab('overview', { render: renderOverview });
 registerTab('contacts', { render: renderContacts });
 registerTab('followups', { render: renderFollowups });
 registerTab('campaigns', { render: renderCampaigns });
+registerTab('compose', { render: renderCompose });
 registerTab('insights', { render: renderInsights });
 
 /* Campaigns and AI Insights run on their own sources. In live mode they load from the

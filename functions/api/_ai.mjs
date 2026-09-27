@@ -363,3 +363,50 @@ export function parseWhy(text, validIds) {
   for (const [k, v] of Object.entries(whys)) { const id = Number(k); if (validIds.has(id)) out[id] = cap(str(v), 120); }
   return out;
 }
+
+/* =====================================================================================
+ * COMPOSE — "one-click" investor email. A single grounded call turns a short brief into
+ * a clean, professional, MERGE-READY email: {subject, preheader, body}. The body uses the
+ * exact placeholders {{FirstName}} and {{Organisation}} so a campaign tool (Zoho) can
+ * personalise per recipient; nothing is ever sent from the app. The model is told to use
+ * ONLY the brief + key points — never to invent numbers, returns, dates or commitments.
+ * ===================================================================================== */
+
+export function buildComposeSystem() {
+  return [
+    'You write investor-update emails for Dhamma Capital, an investment fund, to send to its investors and prospects.',
+    'Write ONE professional email from the brief. Use ONLY what the brief and key points state — NEVER invent numbers, returns, percentages, dates, fund terms or commitments. If a figure is not given, do not state one.',
+    'Personalise with these EXACT placeholders where they read naturally: {{FirstName}} (the recipient\'s first name) and {{Organisation}} (their firm). Open the greeting with {{FirstName}}. Do NOT use any other placeholder or merge syntax.',
+    'Keep it clean and scannable: a greeting, 2–4 short paragraphs, a clear closing line, and a sign-off from "Dhamma Capital — Investor Relations". Write PLAIN TEXT only — blank line between paragraphs, no HTML and no markdown.',
+    'Honour the requested tone: "Warm" is friendly and personal; "Formal" is measured and businesslike.',
+    'Reply with STRICT JSON only — no prose, no markdown fences — exactly this shape:',
+    '{"subject":"<subject line, <=90 chars>","preheader":"<inbox preview line, <=120 chars>","body":"<the email as plain text with \\n line breaks>"}',
+  ].join('\n');
+}
+
+export function buildComposeUser({ brief, tone, keyPoints }) {
+  const kp = str(keyPoints);
+  return [
+    `BRIEF (what this email is about):\n${cap(str(brief), 4000)}`,
+    `TONE: ${oneOf(tone, ['Warm', 'Formal'], 'Warm')}`,
+    `KEY POINTS TO INCLUDE:\n${kp ? cap(kp, 2000) : '(none given — work from the brief)'}`,
+    'FUND: Dhamma Capital (investor relations).',
+  ].join('\n\n');
+}
+
+export const COMPOSE_PROMPT = ({ brief, tone, keyPoints }) => ({
+  system: buildComposeSystem(),
+  user: buildComposeUser({ brief, tone, keyPoints }),
+  maxTokens: 1500,
+});
+
+/** Validate the model's email into {subject, preheader, body}; body is required. */
+export function parseComposedEmail(text) {
+  const obj = extractJson(text);
+  if (!obj || typeof obj !== 'object' || !str(obj.body)) throw new Error('The AI did not return a usable email.');
+  return {
+    subject: cap(str(obj.subject), 200) || 'An update from Dhamma Capital',
+    preheader: cap(str(obj.preheader), 240),
+    body: cap(str(obj.body), 8000),
+  };
+}

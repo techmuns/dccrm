@@ -6,6 +6,7 @@
 import { activate } from './router.js';
 
 let pendingContactsPreset = null;
+let pendingComposeAudience = null;
 
 /** Switch to Contacts, pre-applying { field: [values] } filters once it mounts. */
 export function goToContacts(preset) {
@@ -18,4 +19,17 @@ export function takeContactsPreset() {
   const preset = pendingContactsPreset;
   pendingContactsPreset = null;
   return preset;
+}
+
+/** Switch to Compose with a handed-off audience (a set/array of contact ids). */
+export function goToCompose(ids) {
+  pendingComposeAudience = ids && ids.size ? new Set(ids) : (Array.isArray(ids) && ids.length ? new Set(ids) : null);
+  activate('compose');
+}
+
+/** Compose reads this once on mount; returns null after it's consumed. */
+export function takeComposeAudience() {
+  const ids = pendingComposeAudience;
+  pendingComposeAudience = null;
+  return ids;
 }
