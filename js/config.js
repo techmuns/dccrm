@@ -117,6 +117,7 @@ export const TABS = [
   { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
   { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
   { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: true },
+  { id: 'compose',    label: 'Compose',     icon: 'mail-plus',        ready: true },
   { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: true },
 ];
 

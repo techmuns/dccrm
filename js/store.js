@@ -422,6 +422,30 @@ export async function aiWhy(items) {
   catch { return { whys: {} }; }
 }
 
+/** "Compose with AI": a brief → a merge-ready { subject, preheader, body }. Writes nothing. */
+export async function composeEmail({ brief, tone, keyPoints }) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/ai/compose', { method: 'POST', body: JSON.stringify({ brief, tone, keyPoints }) }); return { ok: true, ...d }; }
+  catch (err) { return { ok: false, error: err.message, code: err.code }; }
+}
+
+/* ---------- saved emails (Compose — reuse later) ---------- */
+export async function listEmails() {
+  if (!isLive()) return { emails: [] };
+  try { const d = await api('/api/emails'); return { ok: true, emails: d.emails || [] }; }
+  catch (err) { return { ok: false, error: err.message, emails: [] }; }
+}
+export async function saveEmail(email) {
+  if (!isLive()) return PREVIEW;
+  try { const d = await api('/api/emails', { method: 'POST', body: JSON.stringify(email) }); return { ok: true, email: d.email }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+export async function deleteEmail(id) {
+  if (!isLive()) return PREVIEW;
+  try { await api(`/api/emails/${id}`, { method: 'DELETE' }); return { ok: true }; }
+  catch (err) { return { ok: false, error: err.message }; }
+}
+
 /* ---------- campaigns (Feature 3) ---------- */
 export async function listCampaigns() {
   if (!isLive()) return [];

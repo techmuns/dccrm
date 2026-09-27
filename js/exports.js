@@ -10,7 +10,7 @@
  *
  * Reuses SheetJS (window.XLSX, already loaded for Import).
  */
-import { tidy } from './util.js';
+import { tidy, escapeHtml } from './util.js';
 
 /* The 25 working-copy columns, in order. Header text is chosen so each maps back to the
    SAME field on import (verified against HEADER_MAP): the file round-trips. */
@@ -109,6 +109,78 @@ export function exportSendListCsv(contacts, filename) {
 export function sendListTsv(contacts) {
   const { withEmail } = sendListParts(contacts);
   return toTsv(aoaFor(withEmail, SENDLIST_COLUMNS));
+}
+
+/* ---------- (c) Compose: email HTML + text + per-recipient merge ---------- */
+
+/** The two personalization placeholders the compose email + Zoho merge use. */
+export const PLACEHOLDERS = ['{{FirstName}}', '{{Organisation}}'];
+
+/** Normalise common placeholder spellings the model might emit to our canonical two. */
+export function normalizePlaceholders(text) {
+  return String(text || '')
+    .replace(/\{\{\s*first[\s_]*name\s*\}\}/gi, '{{FirstName}}')
+    .replace(/\{\{\s*(organi[sz]ation|company|org|firm)\s*\}\}/gi, '{{Organisation}}');
+}
+
+const firstNameOf = (c) => tidy(c?.fullName).split(/\s+/)[0] || 'there';
+const orgOf = (c) => tidy(c?.organisation) || 'your firm';
+
+/** Fill the placeholders for ONE real contact (used by the live preview). */
+export function fillPlaceholders(text, contact) {
+  return normalizePlaceholders(text)
+    .replace(/\{\{\s*FirstName\s*\}\}/g, firstNameOf(contact))
+    .replace(/\{\{\s*Organisation\s*\}\}/g, orgOf(contact));
+}
+
+/** Plain-text version of the email (for the "Copy email" fallback / plain paste). */
+export function emailPlainText({ subject, body }) {
+  return `Subject: ${tidy(subject)}\n\n${normalizePlaceholders(body || '').trim()}`.trim();
+}
+
+/**
+ * A clean, email-ready HTML document: inline-styled, ~600px centred, safe fonts — it
+ * pastes straight into Zoho Campaigns' HTML editor. The {{FirstName}}/{{Organisation}}
+ * placeholders are LEFT IN so Zoho merges them per recipient.
+ */
+export function emailHtml({ subject, preheader, body }) {
+  const subj = escapeHtml(tidy(subject) || 'An update from Dhamma Capital');
+  const pre = escapeHtml(tidy(preheader));
+  const paras = normalizePlaceholders(body || '')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 16px;">${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
+    .join('\n            ') || '<p style="margin:0;">&nbsp;</p>';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${subj}</title>
+</head>
+<body style="margin:0;padding:0;background:#f2f2f0;">
+  ${pre ? `<span style="display:none;max-height:0;overflow:hidden;opacity:0;">${pre}</span>` : ''}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f0;">
+    <tr><td align="center" style="padding:24px 12px;">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e3e3e1;border-radius:4px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+        <tr><td style="height:4px;background:#a83a5b;font-size:0;line-height:0;">&nbsp;</td></tr>
+        <tr><td style="padding:30px 34px 34px;">
+          <div style="font-size:13px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#a83a5b;margin:0 0 20px;">Dhamma Capital</div>
+          <div style="font-size:15px;line-height:1.62;color:#23232a;">
+            ${paras}
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+/** Download the composed email as a clean .html file. */
+export function downloadEmailHtml(email, filename) {
+  saveBlob(emailHtml(email), 'text/html;charset=utf-8', filename || `Dhamma email - ${stamp()}.html`);
 }
 
 /* ---------- clipboard ---------- */
