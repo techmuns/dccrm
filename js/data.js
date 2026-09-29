@@ -9,6 +9,7 @@
 import {
   HEADER_MAP, FIELDS, SEARCH_FIELDS, ALL_STAGES, STAGE_ORDER,
   STAGE_INVESTED, ACTIVE_STAGES, HEAT_VALUES, NEUTRAL,
+  STAGE_GATES, FIELD_LABELS,
 } from './config.js';
 import { registerDimension, colorOf, resetColors } from './colors.js';
 import { headerKey, tidy, parseDate, daysFromToday, countBy, rank } from './util.js';
@@ -19,6 +20,46 @@ export const COLOURED_DIMENSIONS = ['stage', 'heat', 'entityType', 'country', 's
 
 /** A record is "closed" (Passed / Disqualified) — outside the six active stages. */
 export const isClosed = (c) => !!(c && tidy(c.closedStatus));
+
+/** An "active" record is one we should be working: not closed and not parked (dormant). */
+export const isActive = (c) => !!c && !isClosed(c) && !c.dormant;
+
+/**
+ * Soft-required check (Phase 10): what an ACTIVE record is missing to be well-formed.
+ * Owner is expected from Target onward; a "Next step" is action text + a due date. Returns a
+ * short list like ['Owner', 'Next step'] — empty when nothing's missing or the record isn't active.
+ * These are flagged, never blocked, because imported rows are sparse.
+ */
+export function needsAttentionReasons(c) {
+  if (!isActive(c)) return [];
+  const out = [];
+  if (!tidy(c.relationshipOwner)) out.push('Owner');
+  if (!tidy(c.nextAction) || !tidy(c.nextActionDate)) out.push('Next step');
+  return out;
+}
+/** Active records missing an Owner or a Next step — the dashboard "Needs attention" list. */
+export const needsAttention = (contacts) => (contacts || []).filter((c) => needsAttentionReasons(c).length);
+
+/**
+ * The drawer's "what's needed to advance" checklist: the requirements to reach the NEXT
+ * stage, each with whether it's met. Hard-gate fields when the next stage gates on entry
+ * (Vehicle+Target ticket for Diligence, Committed amount+Funding date for Committed);
+ * otherwise the soft-requireds. Null at the final stage, an unknown stage, or when closed.
+ */
+export function advanceChecklist(contact) {
+  if (!contact || isClosed(contact)) return null;
+  const idx = STAGE_ORDER.indexOf(contact.stage);
+  if (idx < 0 || idx >= STAGE_ORDER.length - 1) return null;
+  const next = STAGE_ORDER[idx + 1];
+  const gate = STAGE_GATES[next];
+  const items = gate
+    ? gate.fields.map((f) => ({ label: FIELD_LABELS[f] || f, met: tidy(contact[f]) !== '' }))
+    : [
+      { label: 'Owner assigned', met: tidy(contact.relationshipOwner) !== '' },
+      { label: 'Next step set', met: tidy(contact.nextAction) !== '' && tidy(contact.nextActionDate) !== '' },
+    ];
+  return { next, hard: !!gate, items };
+}
 
 /** Canonical spelling for a stage, matched case- and space-insensitively. */
 function canonicalStage(value) {
@@ -82,7 +123,7 @@ export function mapHeaders(headers) {
  */
 export function normalizeContact(row) {
   const contact = {};
-  const RAW_DATE_FIELDS = ['lastContact', 'nextActionDate', 'wakeDate', 'revisitDate'];
+  const RAW_DATE_FIELDS = ['lastContact', 'nextActionDate', 'wakeDate', 'revisitDate', 'fundingDate'];
   for (const field of FIELDS) {
     const value = row[field];
     contact[field] = value == null ? ''
@@ -112,10 +153,12 @@ export function normalizeContact(row) {
   contact.nextActionAt = parseDate(contact.nextActionDate);
   contact.wakeDateAt = parseDate(contact.wakeDate);
   contact.revisitDateAt = parseDate(contact.revisitDate);
+  contact.fundingDateAt = parseDate(contact.fundingDate);
   contact.lastContact = contact.lastContactAt ? toISO(contact.lastContactAt) : tidy(contact.lastContact);
   contact.nextActionDate = contact.nextActionAt ? toISO(contact.nextActionAt) : tidy(contact.nextActionDate);
   contact.wakeDate = contact.wakeDateAt ? toISO(contact.wakeDateAt) : tidy(contact.wakeDate);
   contact.revisitDate = contact.revisitDateAt ? toISO(contact.revisitDateAt) : tidy(contact.revisitDate);
+  contact.fundingDate = contact.fundingDateAt ? toISO(contact.fundingDateAt) : tidy(contact.fundingDate);
   const tagNames = contact.tags.map((t) => t.name).join(' ');
   contact.searchBlob = (SEARCH_FIELDS.map((f) => contact[f]).join(' ') + ' ' + tagNames).toLowerCase();
   return contact;

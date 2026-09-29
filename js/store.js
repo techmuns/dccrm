@@ -87,10 +87,25 @@ export async function init() {
     const data = await api('/api/contacts?limit=100000');
     adoptLive(data);
     await loadAux();
+    await runMaintenance();   // Phase 10: apply date-driven auto-actions, then refresh if anything changed
   } catch {
     await loadSampleFallback();
   }
   emit();
+}
+
+/**
+ * Run the server's date-driven auto-actions (wake due dormant records, reopen due closed
+ * ones — each with a reminder + timeline entry). Called once on boot. Idempotent server-side,
+ * so it is safe every load; only reloads the book when it actually changed something.
+ */
+export async function runMaintenance() {
+  if (!isLive()) return { ok: false };
+  try {
+    const d = await api('/api/maintenance', { method: 'POST' });
+    if ((d.wokeDormant || 0) + (d.reopened || 0) > 0) await reload();
+    return { ok: true, ...d };
+  } catch { return { ok: false }; }
 }
 
 /** Load tags + saved segments (live only). */

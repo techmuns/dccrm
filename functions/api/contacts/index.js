@@ -1,7 +1,7 @@
 /**
  * /api/contacts — list (GET, with tags + signed-in user) and create (POST).
  */
-import { WRITABLE, json, fail, noDb, now, cleanPayload, readJson, ensureSchema, tagsByContact, currentUser } from '../_lib.js';
+import { WRITABLE, json, fail, noDb, now, cleanPayload, readJson, ensureSchema, tagsByContact, currentUser, gateViolation } from '../_lib.js';
 
 const FILTERS = ['entityType', 'stage', 'country', 'vehicle', 'source', 'relationshipOwner'];
 
@@ -60,6 +60,9 @@ export async function onRequestPost({ request, env }) {
   } catch (err) {
     return fail(err.message, 400);
   }
+  // Phase 10 — a new record created directly into a gated stage must satisfy the same rules.
+  const gate = gateViolation({}, values);
+  if (gate) return fail(gate, 422);
 
   const ts = now();
   const cols = WRITABLE.filter((c) => c in values);

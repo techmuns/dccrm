@@ -6,11 +6,14 @@
  * Reads/writes go through the store (live Cloudflare D1). In preview mode (no
  * database) the write controls are hidden and it stays read-only.
  */
-import { ALL_STAGES, HEAT_VALUES, HEAT_STAGES, STAGE_HINTS, CLOSED_LABELS } from '../config.js';
+import {
+  ALL_STAGES, HEAT_VALUES, HEAT_STAGES, STAGE_HINTS, CLOSED_LABELS,
+  STAGE_ORDER, VEHICLE_VALUES, DISQUALIFY_MIN_STAGE,
+} from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { formatDate, daysFromToday, escapeHtml, tidy } from '../util.js';
-import { isClosed } from '../data.js';
+import { isClosed, needsAttentionReasons, advanceChecklist } from '../data.js';
 import { openTimeline } from './timeline.js';
 import { CADENCES, applyCadence, addReminder, dueInDays } from '../cadences.js';
 import * as store from '../store.js';
@@ -21,7 +24,7 @@ let lastFocus = null;
 const FIELD_ORDER = [
   'fullName', 'entityType', 'role', 'organisation', 'designation',
   'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
-  'country', 'city', 'stage', 'vehicle', 'tier', 'priority',
+  'country', 'city', 'stage', 'vehicle', 'targetTicket', 'committedAmount', 'fundingDate', 'tier', 'priority',
   'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner',
   'source', 'referredBy', 'signal', 'notes', 'roughNotes',
 ];
@@ -173,13 +176,17 @@ function renderReplies(host, replies) {
 const closedChip = (c) => h('span', { class: 'cat-chip', style: '--c:#c0392b' },
   [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: `Closed · ${CLOSED_LABELS[c.closedStatus] || ''}`.trim() })]);
 
-/** The header chips: type, then stage (or Closed), plus Heat and a Dormant badge. */
+/** The header chips: type, then stage (or Closed), plus Heat, a Dormant badge, and a
+ *  soft "Needs" flag (Owner / Next step) when an active record is missing them. */
 function headChips(contact) {
+  const needs = needsAttentionReasons(contact);
   return h('div', { class: 'drawer-chips' }, [
     chip('entityType', contact.entityType),
     isClosed(contact) ? closedChip(contact) : chip('stage', contact.stage),
     (!isClosed(contact) && contact.heat) ? chip('heat', contact.heat) : null,
     contact.dormant ? h('span', { class: 'cat-chip', style: '--c:#8f8f96' }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: 'Dormant' })]) : null,
+    needs.length ? h('span', { class: 'needs-chip', title: `Missing: ${needs.join(', ')}` },
+      [icon('triangle-alert', 'size-3'), h('span', { text: `Needs: ${needs.join(' / ')}` })]) : null,
   ]);
 }
 
@@ -194,7 +201,9 @@ function pipelinePanel(contact) {
 
   const applyPatch = async (patch) => {
     const r = await store.updateContact(contact.id, patch, { optimistic: false, source: 'Manual' });
-    if (!r.ok) { toast(r.error || 'Could not save that change.', 'warn'); return; }
+    // A blocked change (e.g. a hard gate) shows the friendly message and repaints, so the
+    // controls snap back to the record's true state instead of showing the attempted value.
+    if (!r.ok) { toast(r.error || 'Could not save that change.', 'warn'); paint(); return; }
     Object.assign(contact, r.contact);
     paint();
     const chipsHost = refs.head.querySelector('.drawer-chips');
@@ -212,6 +221,44 @@ function pipelinePanel(contact) {
     if (closed) stageSel.disabled = true;
     stageSel.addEventListener('change', () => applyPatch({ stage: stageSel.value }));
     const hint = STAGE_HINTS[contact.stage] ? h('p', { class: 'pipe-hint', text: `Move on when: ${STAGE_HINTS[contact.stage]}` }) : null;
+
+    // "What's needed to advance" — the next stage's requirements, green when met (Phase 10).
+    const advance = closed ? null : advanceChecklist(contact);
+    const checklistEl = advance ? h('div', { class: 'pipe-checklist' }, [
+      h('div', { class: 'pipe-check-h' }, [icon('flag', 'size-3'), h('span', { text: `To reach ${advance.next}:` })]),
+      ...advance.items.map((it) => h('div', { class: `pipe-check${it.met ? ' is-met' : ''}` },
+        [icon(it.met ? 'circle-check-big' : 'circle', 'size-3.5'), h('span', { text: it.label })])),
+    ]) : null;
+
+    // Deal terms — the gate fields, editable inline so a blocked move is one fix away.
+    let dealRow = null;
+    if (!closed) {
+      const vehicleSel = h('select', { class: 'field-input' }, [
+        h('option', { value: '', text: '—', selected: contact.vehicle ? null : '' }),
+        ...VEHICLE_VALUES.map((v) => h('option', { value: v, text: v, selected: v === contact.vehicle ? '' : null })),
+      ]);
+      if (contact.vehicle && !VEHICLE_VALUES.includes(contact.vehicle)) {
+        vehicleSel.prepend(h('option', { value: contact.vehicle, text: contact.vehicle, selected: '' }));
+      }
+      vehicleSel.addEventListener('change', () => applyPatch({ vehicle: vehicleSel.value }));
+
+      const mkText = (field, placeholder) => {
+        const el = h('input', { class: 'field-input', type: 'text', value: contact[field] || '', placeholder });
+        el.addEventListener('change', () => applyPatch({ [field]: el.value.trim() }));
+        return el;
+      };
+      const ticketInput = mkText('targetTicket', 'e.g. ₹5 Cr');
+      const amtInput = mkText('committedAmount', 'e.g. ₹5 Cr');
+      const fundInput = h('input', { class: 'field-input pipe-date', type: 'date', value: contact.fundingDate || '' });
+      fundInput.addEventListener('change', () => applyPatch({ fundingDate: fundInput.value }));
+
+      dealRow = h('div', { class: 'pipe-terms' }, [
+        h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Vehicle' }), vehicleSel]),
+        h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Target ticket' }), ticketInput]),
+        h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Committed' }), amtInput]),
+        h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Funding date' }), fundInput]),
+      ]);
+    }
 
     let heatRow = null;
     if (heatShown) {
@@ -246,11 +293,16 @@ function pipelinePanel(contact) {
         reopen,
       ]);
     } else {
+      // Disqualified (we declined) is only offered from Engaged onward; Passed from any stage.
+      const canDisqualify = STAGE_ORDER.indexOf(contact.stage) >= STAGE_ORDER.indexOf(DISQUALIFY_MIN_STAGE);
       const revInput = h('input', { class: 'field-input pipe-date', type: 'date', 'aria-label': 'Revisit date' });
       const passBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'They declined' }, [h('span', { text: 'Passed' })]);
-      const dqBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'We declined' }, [h('span', { text: 'Disqualified' })]);
       passBtn.addEventListener('click', () => applyPatch({ closedStatus: 'passed', revisitDate: revInput.value }));
-      dqBtn.addEventListener('click', () => applyPatch({ closedStatus: 'disqualified', revisitDate: revInput.value }));
+      let dqBtn = null;
+      if (canDisqualify) {
+        dqBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'We declined' }, [h('span', { text: 'Disqualified' })]);
+        dqBtn.addEventListener('click', () => applyPatch({ closedStatus: 'disqualified', revisitDate: revInput.value }));
+      }
       closeRow = h('div', { class: 'pipe-close' }, [
         h('span', { class: 'pipe-lbl', text: 'Close' }), passBtn, dqBtn,
         h('label', { class: 'pipe-inline' }, [h('span', { class: 'pipe-lbl', text: 'Revisit' }), revInput]),
@@ -260,7 +312,7 @@ function pipelinePanel(contact) {
     wrap.replaceChildren(...[
       h('h3', {}, [icon('git-branch', 'size-3.5'), 'Pipeline']),
       h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Stage' }), stageSel]),
-      hint, heatRow, dormRow, closeRow,
+      hint, checklistEl, dealRow, heatRow, dormRow, closeRow,
     ].filter(Boolean));   // native replaceChildren() coerces a null arg to the text "null"
     refreshIcons(wrap);
   }
@@ -326,11 +378,13 @@ function renderView(contact, opts = {}) {
       field('Heat', contact.heat),
       field('Dormant', contact.dormant ? 'Yes' : ''),
       field('Vehicle', contact.vehicle),
+      field('Target ticket', contact.targetTicket),
+      field('Committed amount', contact.committedAmount),
+      field('Funding date', contact.fundingDate ? formatDate(contact.fundingDateAt) : ''),
       field('Tier', contact.tier),
       field('Priority', contact.priority),
     ]),
     store.isLive() ? section('Investment', 'briefcase', [
-      field('Vehicle', contact.vehicle),
       field('Tier', contact.tier),
       field('Priority', contact.priority),
     ]) : null,
@@ -740,6 +794,7 @@ function labelFor(field) {
     designation: 'Designation', email: 'Email', phone: 'Phone', altPhone: 'Alt phone',
     whatsapp: 'WhatsApp number', whatsappOptIn: 'WhatsApp opt-in', country: 'Country', city: 'City',
     vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority',
+    targetTicket: 'Target ticket', committedAmount: 'Committed amount', fundingDate: 'Expected funding date',
     referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action',
     nextActionDate: 'Next action date', relationshipOwner: 'Relationship owner', source: 'Source / channel',
     signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes for Raghav',
@@ -752,12 +807,16 @@ function inputFor(field, value, inputs) {
   if (field === 'stage') {
     el = h('select', { class: 'field-input' }, [h('option', { value: '', text: '—' }),
       ...ALL_STAGES.map((s) => h('option', { value: s, text: s, selected: s === value ? '' : null }))]);
+  } else if (field === 'vehicle') {
+    el = h('select', { class: 'field-input' }, [h('option', { value: '', text: '—', selected: value ? null : '' }),
+      ...VEHICLE_VALUES.map((v) => h('option', { value: v, text: v, selected: v === value ? '' : null }))]);
+    if (value && !VEHICLE_VALUES.includes(value)) el.prepend(h('option', { value, text: value, selected: '' }));
   } else if (field === 'whatsappOptIn') {
     el = h('select', { class: 'field-input' }, ['', 'Yes', 'No'].map((o) =>
       h('option', { value: o, text: o || '—', selected: o === value ? '' : null })));
   } else if (field === 'notes' || field === 'roughNotes') {
     el = h('textarea', { class: 'field-input', rows: '3' }); el.value = value || '';
-  } else if (field === 'lastContact' || field === 'nextActionDate') {
+  } else if (field === 'lastContact' || field === 'nextActionDate' || field === 'fundingDate') {
     el = h('input', { class: 'field-input', type: 'date', value: value || '' });
   } else {
     const suggestions = ['entityType', 'role', 'vehicle', 'tier', 'priority', 'relationshipOwner', 'source', 'country', 'city'].includes(field)
@@ -786,7 +845,7 @@ function renderEdit(contact, { create }) {
     ['Identity', ['fullName', 'entityType', 'role', 'organisation', 'designation']],
     ['Contact channels', ['email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn']],
     ['Location', ['country', 'city']],
-    ['Pipeline', ['stage', 'vehicle', 'tier', 'priority']],
+    ['Pipeline', ['stage', 'vehicle', 'targetTicket', 'committedAmount', 'fundingDate', 'tier', 'priority']],
     ['Follow-up', ['lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner']],
     ['Source', ['source', 'referredBy', 'signal']],
     ['Notes', ['notes', 'roughNotes']],

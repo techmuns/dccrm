@@ -895,6 +895,42 @@ select.grid-input { appearance:none; cursor:pointer;
 .pipe-closed-l { display:inline-flex; align-items:center; gap:.35rem; font-size:var(--fs-body); font-weight:600; color:var(--danger);
   width:100%; }
 
+/* =========================================================================
+   Phase 10 — rules & gates (advance checklist · deal terms · needs-attention)
+   ========================================================================= */
+
+/* drawer: the "what's needed to advance" checklist */
+.pipe-checklist { margin:.1rem 0 .5rem; padding:.5rem .6rem; border:1px solid var(--line-soft); border-radius:4px; background:#faf9f8; }
+.pipe-check-h { display:flex; align-items:center; gap:.35rem; font-size:var(--fs-caption); font-weight:700; color:var(--ink-2); margin-bottom:.35rem; }
+.pipe-check { display:flex; align-items:center; gap:.4rem; font-size:var(--fs-caption); color:var(--ink-3); padding:.1rem 0; }
+.pipe-check svg { color:#c7c7c4; flex:none; }
+.pipe-check.is-met { color:var(--ink-2); }
+.pipe-check.is-met svg { color:var(--jade); }
+
+/* drawer: deal-terms rows (gate fields) — wider labels than the stage/heat rows */
+.pipe-terms { border-top:1px solid var(--line-soft); margin-top:.3rem; padding-top:.35rem; }
+.pipe-terms .pipe-lbl { width:6.4rem; }
+
+/* the soft "Needs" flag chip in the drawer header */
+.needs-chip { display:inline-flex; align-items:center; gap:.3rem; font-size:var(--fs-caption); font-weight:600;
+  color:var(--amber); background:color-mix(in srgb, var(--amber) 12%, #fff);
+  border:1px solid color-mix(in srgb, var(--amber) 30%, #fff); border-radius:3px; padding:.16rem .5rem; white-space:nowrap; }
+
+/* dashboard: Needs attention list */
+.needs-host { display:flex; flex-direction:column; }
+.needs-count { margin:0 0 .4rem; }
+.needs-row { display:flex; align-items:center; gap:.6rem; width:100%; text-align:left; background:none; border:0;
+  border-top:1px solid var(--line-soft); padding:.5rem .15rem; cursor:pointer; transition:background .12s ease; }
+.needs-row:hover { background:var(--sel); }
+.needs-main { display:flex; flex-direction:column; min-width:0; flex:1 1 auto; }
+.needs-main .nm { font-size:var(--fs-body); font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.needs-main .sub { font-size:var(--fs-caption); color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.needs-tags { display:flex; gap:.3rem; flex:none; flex-wrap:wrap; justify-content:flex-end; }
+.needs-tag { display:inline-flex; align-items:center; gap:.25rem; font-size:.68rem; font-weight:600; color:var(--amber);
+  background:color-mix(in srgb, var(--amber) 12%, #fff); border:1px solid color-mix(in srgb, var(--amber) 28%, #fff);
+  border-radius:3px; padding:.1rem .4rem; white-space:nowrap; }
+.needs-more { margin:.5rem 0 0; }
+
 /* ---------- Phase 3 — intelligence layer (update box · ask · priorities · draft) ---------- */
 .ai-hdr-btn { color:#fff; background:var(--c1); box-shadow:0 1px 2px rgba(var(--c1-rgb),.20); }
 .ai-hdr-btn:hover { background:var(--primary-strong); box-shadow:0 1px 3px rgba(var(--c1-rgb),.30); }

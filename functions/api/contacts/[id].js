@@ -1,7 +1,7 @@
 /**
  * /api/contacts/:id — read one (with activities, tasks and tags), edit (PUT), delete.
  */
-import { WRITABLE, json, fail, noDb, now, cleanPayload, readJson, ensureSchema, currentUser } from '../_lib.js';
+import { WRITABLE, json, fail, noDb, now, cleanPayload, readJson, ensureSchema, currentUser, gateViolation } from '../_lib.js';
 
 const parseId = (params) => {
   const id = parseInt(params.id, 10);
@@ -92,8 +92,13 @@ export async function onRequestPut({ params, request, env }) {
   // the contact's timeline (below). Only needed when this edit actually touches one of them.
   let before = null;
   if (TRACKED.some((k) => k in values)) {
-    before = await env.DB.prepare('SELECT stage, heat, dormant, closedStatus, wakeDate, revisitDate FROM contacts WHERE id = ?').bind(id).first();
+    before = await env.DB.prepare(
+      'SELECT stage, heat, dormant, closedStatus, wakeDate, revisitDate, vehicle, targetTicket, committedAmount, fundingDate FROM contacts WHERE id = ?',
+    ).bind(id).first();
     if (!before) return fail('Contact not found.', 404);
+    // Phase 10 — enforce the hard pipeline gates here, so no editor path can bypass them.
+    const gate = gateViolation(before, values);
+    if (gate) return fail(gate, 422);
   }
   const cols = WRITABLE.filter((c) => c in values);
   const setSql = [...cols.map((c) => `${c} = ?`), 'updatedAt = ?', 'updatedBy = ?'].join(', ');

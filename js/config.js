@@ -72,12 +72,37 @@ export const CLOSED_STATUSES = [
 ];
 export const CLOSED_LABELS = { passed: 'Passed', disqualified: 'Disqualified' };
 
+/* Vehicle is the structure a record would invest through — a fixed two-value dropdown
+   (Phase 10). An existing free-text value (e.g. a fund name) is preserved as a current
+   option so nothing is lost, but new picks are one of these. */
+export const VEHICLE_VALUES = ['AIF', 'FPI'];
+
+/* ---- Phase 10: hard pipeline gates (mirrored from the server) ----
+   Keyed by the stage being ENTERED: those fields must be filled before a record can move in.
+   The server (functions/api/_lib.js gateViolation) is authoritative; these mirror its rules
+   so the client can show the same message and a "what's needed to advance" checklist. */
+export const STAGE_GATES = {
+  Diligence: {
+    fields: ['vehicle', 'targetTicket'],
+    message: "Can't move to Diligence yet — add Vehicle and Target ticket first.",
+  },
+  Committed: {
+    fields: ['committedAmount', 'fundingDate'],
+    message: "Can't move to Committed yet — add Committed amount and expected funding date first.",
+  },
+};
+export const CLOSE_NEEDS_REVISIT_MSG = 'Add a revisit date to close this.';
+/* Disqualified (we declined) is only meaningful once a relationship exists — Engaged onward.
+   Passed (they declined) is allowed from any active stage. */
+export const DISQUALIFY_MIN_STAGE = 'Engaged';
+
 /* The normalised contact shape. Order matters for table views in later tabs. */
 export const FIELDS = [
   'fullName', 'entityType', 'role', 'organisation', 'designation',
   'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
   'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
-  'closedStatus', 'revisitDate', 'tier', 'priority', 'referredBy',
+  'closedStatus', 'revisitDate', 'targetTicket', 'committedAmount', 'fundingDate',
+  'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate',
   'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
@@ -100,6 +125,10 @@ export const HEADER_MAP = {
   primarycity: 'city', city: 'city',
   vehicle: 'vehicle', fund: 'vehicle', product: 'vehicle', strategy: 'vehicle',
   stage: 'stage', pipelinestage: 'stage',
+  // Phase 10 — gate fields
+  targetticket: 'targetTicket', targetticketsize: 'targetTicket', ticket: 'targetTicket', ticketsize: 'targetTicket',
+  committedamount: 'committedAmount', commitmentamount: 'committedAmount', amountcommitted: 'committedAmount',
+  fundingdate: 'fundingDate', expectedfundingdate: 'fundingDate', expectedfunding: 'fundingDate', fundingexpected: 'fundingDate',
   // Finalised model — Heat / Dormant / Closed are separate fields (Phase 9).
   heat: 'heat', temperature: 'heat', heatlevel: 'heat',
   dormant: 'dormant', isdormant: 'dormant', parked: 'dormant',
@@ -127,7 +156,9 @@ export const FIELD_LABELS = {
   fullName: 'Full name', entityType: 'Entity type', role: 'Role', organisation: 'Organisation', designation: 'Designation',
   email: 'Email', phone: 'Phone', altPhone: 'Alt phone', whatsapp: 'WhatsApp', whatsappOptIn: 'WhatsApp opt-in',
   country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant',
-  wakeDate: 'Wake date', closedStatus: 'Closed status', revisitDate: 'Revisit date', tier: 'Tier', priority: 'Priority',
+  wakeDate: 'Wake date', closedStatus: 'Closed status', revisitDate: 'Revisit date',
+  targetTicket: 'Target ticket', committedAmount: 'Committed amount', fundingDate: 'Expected funding date',
+  tier: 'Tier', priority: 'Priority',
   referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action', nextActionDate: 'Next action date',
   relationshipOwner: 'Relationship owner', source: 'Source / channel', signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes',
 };

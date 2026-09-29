@@ -13,7 +13,7 @@ import { SEED_CONTACTS } from './_seed.js';
 export const WRITABLE = [
   'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone', 'altPhone',
   'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
-  'closedStatus', 'revisitDate', 'tier', 'priority', 'referredBy',
+  'closedStatus', 'revisitDate', 'targetTicket', 'committedAmount', 'fundingDate', 'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
 
@@ -25,7 +25,9 @@ export const HEADERS = {
   designation: 'Designation', email: 'Email', phone: 'Phone (display)', altPhone: 'Alt Phone',
   whatsapp: 'WhatsApp Number (E.164)', whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City',
   vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant', wakeDate: 'Wake Date',
-  closedStatus: 'Closed Status', revisitDate: 'Revisit Date', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
+  closedStatus: 'Closed Status', revisitDate: 'Revisit Date',
+  targetTicket: 'Target Ticket', committedAmount: 'Committed Amount', fundingDate: 'Expected Funding Date',
+  tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
   lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
   relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
   notes: 'Notes', roughNotes: 'Rough Notes for Raghav',
@@ -165,6 +167,10 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'wakeDate', 'TEXT'],
   ['contacts', 'closedStatus', 'TEXT'],
   ['contacts', 'revisitDate', 'TEXT'],
+  // Phase-10: rules & gates — deal terms that gate the Diligence / Committed moves.
+  ['contacts', 'targetTicket', 'TEXT'],
+  ['contacts', 'committedAmount', 'TEXT'],
+  ['contacts', 'fundingDate', 'TEXT'],
 ];
 
 /* Dhamma's FINALISED pipeline (Phase 9). The single source of truth the AI layer validates
@@ -202,6 +208,52 @@ export function remapStage(rawStage) {
   if (NEW_CANON[key]) return { stage: NEW_CANON[key] };
   if (LEGACY_MAP[key]) return { ...LEGACY_MAP[key] };
   return { stage: 'Target' };
+}
+
+/* ---------- Phase 10: hard pipeline gates (authoritative, server-side) ---------- */
+
+const STAGE_INDEX = Object.fromEntries(STAGES.map((s, i) => [s, i]));
+const has = (v) => v != null && String(v).trim() !== '';
+
+/**
+ * The client's rules from the flow spec, enforced in ONE place so no editor path
+ * (grid / drawer / AI prompt box / create / bulk) can bypass them.
+ *
+ * Given the record BEFORE the change (or {} for a create) and the VALUES being written,
+ * return a friendly error string if the change is blocked, or null if it's allowed.
+ * Gates fire only on the actual transition, judged from the MERGED (resulting) record.
+ */
+export function gateViolation(before, values) {
+  const b = before || {};
+  const merged = { ...b, ...values };
+  const from = String(b.stage || '').trim();
+  const to = String(merged.stage || '').trim();
+
+  // 1. Into Diligence — needs Vehicle + Target ticket.
+  if (to === 'Diligence' && from !== 'Diligence') {
+    if (!(has(merged.vehicle) && has(merged.targetTicket))) {
+      return "Can't move to Diligence yet — add Vehicle and Target ticket first.";
+    }
+  }
+  // 2. Into Committed — needs Committed amount + expected funding date.
+  if (to === 'Committed' && from !== 'Committed') {
+    if (!(has(merged.committedAmount) && has(merged.fundingDate))) {
+      return "Can't move to Committed yet — add Committed amount and expected funding date first.";
+    }
+  }
+  // 3 & 4. Closing (Passed / Disqualified). Only judged when this write starts the close.
+  const wasClosed = has(b.closedStatus);
+  const newStatus = 'closedStatus' in values ? String(values.closedStatus || '').trim().toLowerCase() : String(b.closedStatus || '').toLowerCase();
+  const closingNow = !wasClosed && (newStatus === 'passed' || newStatus === 'disqualified');
+  if (closingNow) {
+    if (!has(merged.revisitDate)) return 'Add a revisit date to close this.';
+    if (newStatus === 'disqualified') {
+      // Disqualified is only allowed from Engaged onward; Passed is allowed from any active stage.
+      const at = STAGE_INDEX[from] ?? -1;
+      if (at < STAGE_INDEX.Engaged) return 'Disqualified is only available from Engaged onward — use Passed for a Target.';
+    }
+  }
+  return null;
 }
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
