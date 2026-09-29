@@ -152,6 +152,7 @@ export function render(container) {
     ],
     toggles: [
       { key: 'dormant', label: 'Dormant only', icon: 'moon', predicate: (c) => !!c.dormant },
+      { key: 'hideTopups', label: 'Hide top-ups', icon: 'copy-minus', predicate: (c) => !c.isTopUp },
       { key: 'whatsappOptIn', label: 'WhatsApp opt-in only', icon: 'message-circle',
         predicate: (c) => c.whatsappOptIn === 'Yes' },
     ],

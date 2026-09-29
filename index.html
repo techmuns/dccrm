@@ -931,6 +931,64 @@ select.grid-input { appearance:none; cursor:pointer;
   border-radius:3px; padding:.1rem .4rem; white-space:nowrap; }
 .needs-more { margin:.5rem 0 0; }
 
+/* =========================================================================
+   Phase 11 — top-ups + the LP book
+   ========================================================================= */
+
+/* LP book table */
+.lp-table { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+.lp-row { display:grid; grid-template-columns:minmax(150px,2fr) 130px 132px 132px 132px 108px 92px; align-items:center; gap:.5rem;
+  padding:.55rem .75rem; border-bottom:1px solid var(--line-soft); }
+.lp-row:last-child { border-bottom:0; }
+.lp-head { background:#f7f7f6; font-size:.66rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-3); }
+.lp-row:not(.lp-head):hover { background:#faf9f8; }
+.lp-c { min-width:0; overflow:hidden; }
+.lp-c-act { display:flex; gap:.3rem; justify-content:flex-end; }
+.lp-name { display:flex; flex-direction:column; text-align:left; background:none; border:0; cursor:pointer; min-width:0; padding:0; }
+.lp-name .nm { font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lp-name .sub { font-size:var(--fs-caption); color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lp-name:hover .nm { color:var(--c1); }
+.lp-inv { display:flex; flex-direction:column; }
+.lp-total { font-family:'Inter',sans-serif; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+.lp-count { font-size:var(--fs-caption); color:var(--ink-3); }
+select.lp-sig { width:100%; font-weight:600; color:#3a3a42; padding-left:1.05rem; position:relative;
+  background-color:color-mix(in srgb, var(--c) 12%, #fff);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 24%, #fff), inset .5rem 0 0 -.32rem var(--c); }
+.lp-empty { text-align:center; padding:2.5rem 1rem; color:var(--ink-3); }
+.lp-empty-t { font-weight:600; color:var(--ink-2); margin:.4rem 0 .1rem; }
+@media (max-width:960px){
+  .lp-row { grid-template-columns:minmax(140px,2fr) 120px 128px 84px; }
+  .lp-c-pot, .lp-c-risk, .lp-c-last { display:none; }
+}
+
+/* the top-up chip in the drawer header */
+.topup-chip { display:inline-flex; align-items:center; gap:.3rem; font-size:var(--fs-caption); font-weight:600;
+  color:#4c6ea5; background:color-mix(in srgb, #4c6ea5 12%, #fff); border:1px solid color-mix(in srgb, #4c6ea5 28%, #fff);
+  border-radius:3px; padding:.16rem .5rem; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+
+/* drawer: LP-book panel */
+.lp-drawer-sum { display:flex; gap:1.75rem; margin-bottom:.6rem; }
+.lp-sum-item { display:flex; flex-direction:column; }
+.lp-sum-v { font-family:'Inter',sans-serif; font-size:1.15rem; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+.lp-sum-l { font-size:var(--fs-caption); color:var(--ink-3); }
+.lp-topups { display:flex; flex-direction:column; gap:.3rem; margin-bottom:.6rem; }
+.lp-topup { display:flex; align-items:center; gap:.5rem; width:100%; text-align:left; background:#faf9f8; border:1px solid var(--line-soft);
+  border-radius:4px; padding:.4rem .55rem; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
+.lp-topup:hover { border-color:var(--line); background:#fff; }
+.lp-topup-amt { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+.lp-topup-tag { margin-left:auto; font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--jade);
+  background:color-mix(in srgb, var(--jade) 14%, #fff); border-radius:3px; padding:.05rem .35rem; }
+.lp-link { background:none; border:0; color:var(--c1); font:inherit; font-weight:600; cursor:pointer; padding:0; text-align:left; }
+.lp-link:hover { text-decoration:underline; }
+.lp-add { margin-top:.1rem; }
+
+/* the Add-top-up dialog form */
+.tu-form { display:flex; flex-direction:column; gap:.7rem; }
+.tu-row { display:flex; flex-direction:column; gap:.25rem; }
+.tu-lbl { display:flex; align-items:center; gap:.4rem; font-size:var(--fs-caption); font-weight:600; color:var(--ink-2); }
+.tu-req { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--amber);
+  background:color-mix(in srgb, var(--amber) 12%, #fff); border-radius:3px; padding:.03rem .3rem; }
+
 /* ---------- Phase 3 — intelligence layer (update box · ask · priorities · draft) ---------- */
 .ai-hdr-btn { color:#fff; background:var(--c1); box-shadow:0 1px 2px rgba(var(--c1-rgb),.20); }
 .ai-hdr-btn:hover { background:var(--primary-strong); box-shadow:0 1px 3px rgba(var(--c1-rgb),.30); }

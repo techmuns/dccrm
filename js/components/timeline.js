@@ -25,12 +25,16 @@ const KIND = {
   heat: { color: '#c0392b', icon: 'flame', label: 'Heat change' },
   dormant: { color: '#8f8f96', icon: 'moon', label: 'Dormant' },
   status: { color: '#c0392b', icon: 'circle-slash', label: 'Status' },
+  // Top-ups + LP book (Phase 11)
+  topup: { color: '#4c6ea5', icon: 'copy-plus', label: 'Top-up' },
+  lp: { color: '#2e8b74', icon: 'landmark', label: 'LP book' },
 };
 
 /* per activity-type icon; anything not here falls back to its kind's icon. */
 const ACT_ICON = {
   Note: 'sticky-note', Call: 'phone', Email: 'send', Meeting: 'users', WhatsApp: 'message-circle',
   'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', Other: 'circle-dot',
+  'Top-up': 'copy-plus', LP: 'landmark',
 };
 
 /* filter chips → which kinds each one keeps (null = everything). "Pipeline" covers every
@@ -38,7 +42,7 @@ const ACT_ICON = {
 const FILTERS = [
   { key: 'all', label: 'All', kinds: null },
   { key: 'notes', label: 'Notes', kinds: ['note'] },
-  { key: 'pipeline', label: 'Pipeline', kinds: ['stage', 'heat', 'dormant', 'status'] },
+  { key: 'pipeline', label: 'Pipeline', kinds: ['stage', 'heat', 'dormant', 'status', 'topup', 'lp'] },
   { key: 'tasks', label: 'Tasks', kinds: ['task'] },
   { key: 'emails', label: 'Emails', kinds: ['email-in', 'email-out'] },
 ];
@@ -49,12 +53,14 @@ function kindForActivity(type) {
   if (type === 'Heat change') return 'heat';
   if (type === 'Dormant') return 'dormant';
   if (type === 'Status') return 'status';
+  if (type === 'Top-up') return 'topup';
+  if (type === 'LP') return 'lp';
   if (type === 'Email') return 'email-out';   // a manually-logged email is an outbound touch
   return 'note';                              // Note · Call · Meeting · WhatsApp · Other
 }
 
 /* Pipeline-movement kinds are not "touches" (they're internal bookkeeping, not outreach). */
-const PIPELINE_KINDS = new Set(['stage', 'heat', 'dormant', 'status']);
+const PIPELINE_KINDS = new Set(['stage', 'heat', 'dormant', 'status', 'topup', 'lp']);
 
 /** Turn the raw detail (activities + replies + tasks) into one flat, grounded event list. */
 function buildEvents(detail) {

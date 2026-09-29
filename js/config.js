@@ -96,12 +96,27 @@ export const CLOSE_NEEDS_REVISIT_MSG = 'Add a revisit date to close this.';
    Passed (they declined) is allowed from any active stage. */
 export const DISQUALIFY_MIN_STAGE = 'Engaged';
 
+/* ---- Phase 11: top-ups + the LP book ----
+   A top-up is a NEW record (isTopUp) created at Committed and linked to an existing LP
+   (linkedLp = that Invested contact's id). The LP book is a separate reporting module over
+   the funded LPs, with these three editable fields living on the LP's own record. */
+export const REPORTING_STATUSES = ['Up to date', 'Due', 'Overdue'];
+export const TOPUP_POTENTIAL = ['High', 'Med', 'Low'];
+export const REDEMPTION_RISK = ['Low', 'Med', 'High'];
+/* Fixed colours for the LP-book signals (green good → red risk). */
+export const LP_COLORS = {
+  reportingStatus: { 'Up to date': '#2e8b74', Due: '#c08a2e', Overdue: '#c0392b' },
+  topUpPotential: { High: '#2e8b74', Med: '#c08a2e', Low: '#9a9aa0' },
+  redemptionRisk: { Low: '#2e8b74', Med: '#c08a2e', High: '#c0392b' },
+};
+
 /* The normalised contact shape. Order matters for table views in later tabs. */
 export const FIELDS = [
   'fullName', 'entityType', 'role', 'organisation', 'designation',
   'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
   'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
   'closedStatus', 'revisitDate', 'targetTicket', 'committedAmount', 'fundingDate',
+  'isTopUp', 'linkedLp', 'reportingStatus', 'topUpPotential', 'redemptionRisk',
   'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate',
   'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
@@ -129,6 +144,10 @@ export const HEADER_MAP = {
   targetticket: 'targetTicket', targetticketsize: 'targetTicket', ticket: 'targetTicket', ticketsize: 'targetTicket',
   committedamount: 'committedAmount', commitmentamount: 'committedAmount', amountcommitted: 'committedAmount',
   fundingdate: 'fundingDate', expectedfundingdate: 'fundingDate', expectedfunding: 'fundingDate', fundingexpected: 'fundingDate',
+  // Phase 11 — top-ups + LP book
+  istopup: 'isTopUp', topup: 'isTopUp', linkedlp: 'linkedLp', lp: 'linkedLp', parentlp: 'linkedLp',
+  reportingstatus: 'reportingStatus', reporting: 'reportingStatus',
+  topuppotential: 'topUpPotential', redemptionrisk: 'redemptionRisk', redemption: 'redemptionRisk',
   // Finalised model — Heat / Dormant / Closed are separate fields (Phase 9).
   heat: 'heat', temperature: 'heat', heatlevel: 'heat',
   dormant: 'dormant', isdormant: 'dormant', parked: 'dormant',
@@ -158,6 +177,8 @@ export const FIELD_LABELS = {
   country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant',
   wakeDate: 'Wake date', closedStatus: 'Closed status', revisitDate: 'Revisit date',
   targetTicket: 'Target ticket', committedAmount: 'Committed amount', fundingDate: 'Expected funding date',
+  isTopUp: 'Top-up', linkedLp: 'Linked LP', reportingStatus: 'Reporting status',
+  topUpPotential: 'Top-up potential', redemptionRisk: 'Redemption risk',
   tier: 'Tier', priority: 'Priority',
   referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action', nextActionDate: 'Next action date',
   relationshipOwner: 'Relationship owner', source: 'Source / channel', signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes',
@@ -176,6 +197,7 @@ export const TABS = [
   { id: 'overview',   label: 'Overview',    icon: 'layout-dashboard', ready: true },
   { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
   { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
+  { id: 'lpbook',     label: 'LP Book',     icon: 'landmark',         ready: true },
   { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: true },
   { id: 'compose',    label: 'Compose',     icon: 'mail-plus',        ready: true },
   { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: true },
