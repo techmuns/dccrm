@@ -12,15 +12,20 @@ import { SEED_CONTACTS } from './_seed.js';
    are server-managed. */
 export const WRITABLE = [
   'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone', 'altPhone',
-  'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'tier', 'priority', 'referredBy',
+  'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
+  'closedStatus', 'revisitDate', 'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
+
+/* Fields whose value is a small integer flag rather than free text (special-cased on write). */
+const BOOL_FIELDS = new Set(['dormant']);
 
 export const HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
   designation: 'Designation', email: 'Email', phone: 'Phone (display)', altPhone: 'Alt Phone',
   whatsapp: 'WhatsApp Number (E.164)', whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City',
-  vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
+  vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant', wakeDate: 'Wake Date',
+  closedStatus: 'Closed Status', revisitDate: 'Revisit Date', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
   lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
   relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
   notes: 'Notes', roughNotes: 'Rough Notes for Raghav',
@@ -52,8 +57,14 @@ export function cleanPayload(body, mode = 'create') {
   const values = {};
   for (const key of WRITABLE) {
     if (!(key in body)) continue;
+    if (BOOL_FIELDS.has(key)) {   // dormant is a 0/1 flag, not free text
+      const raw = body[key];
+      values[key] = (raw === 1 || raw === true || /^(1|yes|true|y)$/i.test(String(raw))) ? 1 : 0;
+      continue;
+    }
     let v = trim(body[key]);
     if (key === 'email') v = v.toLowerCase();
+    if (key === 'closedStatus') v = v.toLowerCase();
     values[key] = v === '' ? null : v;
   }
   if (values.email && !EMAIL_RE.test(values.email)) throw new Error(`"${values.email}" does not look like an email address.`);
@@ -148,24 +159,50 @@ const COLUMN_MIGRATIONS = [
   ['tasks', 'completedAt', 'TEXT'],
   // Phase-7: the suggested message intent for a follow-up reminder (drives the AI draft).
   ['tasks', 'intent', 'TEXT'],
+  // Phase-9: finalised pipeline model — Heat / Dormant / Closed are separate from Stage.
+  ['contacts', 'heat', 'TEXT'],
+  ['contacts', 'dormant', 'INTEGER'],
+  ['contacts', 'wakeDate', 'TEXT'],
+  ['contacts', 'closedStatus', 'TEXT'],
+  ['contacts', 'revisitDate', 'TEXT'],
 ];
 
-/* Old pipeline vocabulary → Dhamma's real stages. Applied once to a legacy demo
-   database so existing seed rows adopt the new funnel; never touches real data,
-   which already uses the new stage names. */
-const LEGACY_STAGE_MAP = {
-  'Not Contacted': 'Cold',
-  'Contacted': 'Network',
-  'In Conversation': 'Qualified',
-  'Interested': 'In Diligence',
-  'Meeting Scheduled': 'Committed',
-  'Onboarded': 'Funded',
-};
-const NEW_STAGES = ['Cold', 'Network', 'Qualified', 'In Diligence', 'Committed', 'Funded', 'Hot'];
+/* Dhamma's FINALISED pipeline (Phase 9). The single source of truth the AI layer validates
+   stages against — the six stages only. Heat / Dormant / Closed are separate fields. */
+export const STAGES = ['Target', 'Engaged', 'Diligence', 'Committed', 'Onboarding', 'Invested'];
+const NEW_STAGE_SET = new Set(STAGES.map((s) => s.toLowerCase()));
 
-/* Dhamma's real pipeline vocabulary, in full (the funnel plus the two side statuses).
-   The single source of truth the AI layer validates stages against. */
-export const STAGES = ['Cold', 'Network', 'Qualified', 'In Diligence', 'Committed', 'Funded', 'Hot', 'Dormant'];
+/**
+ * The ONE mapping from any old/other "Stage" value to the finalised model — used by BOTH
+ * the Excel import and the one-time boot migration of existing rows. Returns
+ * { stage, heat?, dormant? }. Already-new values are kept; blank / anything unknown → Target.
+ */
+const NEW_CANON = { target: 'Target', engaged: 'Engaged', diligence: 'Diligence', committed: 'Committed', onboarding: 'Onboarding', invested: 'Invested' };
+const LEGACY_MAP = {
+  funded: { stage: 'Invested' },
+  committed: { stage: 'Committed' },
+  'in diligence': { stage: 'Diligence' },
+  diligence: { stage: 'Diligence' },
+  qualified: { stage: 'Target', heat: 'Warm' },
+  network: { stage: 'Target', heat: 'Cold' },
+  cold: { stage: 'Target', heat: 'Cold' },
+  hot: { stage: 'Target', heat: 'Hot' },
+  dormant: { stage: 'Target', dormant: 1 },
+  // very old vocabulary, mapped defensively in case an ancient DB is ever seen
+  'not contacted': { stage: 'Target', heat: 'Cold' },
+  contacted: { stage: 'Target', heat: 'Cold' },
+  'in conversation': { stage: 'Engaged', heat: 'Warm' },
+  interested: { stage: 'Diligence' },
+  'meeting scheduled': { stage: 'Committed' },
+  onboarded: { stage: 'Invested' },
+};
+export function remapStage(rawStage) {
+  const key = String(rawStage == null ? '' : rawStage).trim().toLowerCase();
+  if (!key) return { stage: 'Target' };
+  if (NEW_CANON[key]) return { stage: NEW_CANON[key] };
+  if (LEGACY_MAP[key]) return { ...LEGACY_MAP[key] };
+  return { stage: 'Target' };
+}
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
 
@@ -202,7 +239,7 @@ async function seedTasksIfEmpty(env) {
   if (n > 0) return;
   // Attach a few starter tasks to active-stage contacts so Follow-ups is alive.
   const rows = await env.DB.prepare(
-    "SELECT id, relationshipOwner FROM contacts WHERE stage IN ('Qualified','In Diligence','Committed') ORDER BY id LIMIT 4",
+    "SELECT id, relationshipOwner FROM contacts WHERE stage IN ('Diligence','Committed','Onboarding','Engaged') ORDER BY id LIMIT 4",
   ).all();
   const list = rows.results || [];
   if (!list.length) return;
@@ -219,7 +256,7 @@ async function seedSegmentsIfEmpty(env) {
   const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM segments').first();
   if (n > 0) return;
   const seg = [
-    ['FPIs in the pipeline', JSON.stringify({ entityType: ['FPI'], stage: ['Qualified'] })],
+    ['FPIs in diligence', JSON.stringify({ entityType: ['FPI'], stage: ['Diligence'] })],
     ['Family Offices', JSON.stringify({ entityType: ['Family Office'] })],
   ];
   await env.DB.batch(seg.map(([name, filtersJson]) =>
@@ -227,22 +264,30 @@ async function seedSegmentsIfEmpty(env) {
 }
 
 /**
- * One-time remap of a legacy demo database from the old pipeline vocabulary to
- * Dhamma's real stages. Runs ONLY when the data still uses the old names AND has
- * no new-stage rows yet, so it can never clobber real imported data.
+ * One-time migration of every row to the finalised pipeline model (Phase 9): map each
+ * contact's old "Stage" value → the new Stage, and set Heat / Dormant where the map says so.
+ * Uses the SAME remapStage() the Excel import uses. Idempotent: once every stage value is one
+ * of the six finalised stages there is nothing legacy left to convert, so it no-ops. It never
+ * clobbers a Heat/Dormant a row already carries.
  */
-async function migrateLegacyStages(env) {
-  const oldNames = Object.keys(LEGACY_STAGE_MAP);
-  const legacy = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM contacts WHERE stage IN (${oldNames.map(() => '?').join(',')})`,
-  ).bind(...oldNames).first();
-  if (!legacy || !legacy.n) return;   // nothing legacy to migrate
-  const modern = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM contacts WHERE stage IN (${NEW_STAGES.map(() => '?').join(',')})`,
-  ).bind(...NEW_STAGES).first();
-  if (modern && modern.n) return;     // already has real/new-stage data — leave it alone
-  await env.DB.batch(Object.entries(LEGACY_STAGE_MAP).map(([oldS, newS]) =>
-    env.DB.prepare('UPDATE contacts SET stage = ? WHERE stage = ?').bind(newS, oldS)));
+async function migrateToFinalModel(env) {
+  const res = await env.DB.prepare('SELECT DISTINCT stage FROM contacts').all();
+  const legacy = (res.results || [])
+    .map((r) => r.stage)
+    .filter((s) => s != null && s !== '' && !NEW_STAGE_SET.has(String(s).trim().toLowerCase()));
+  if (!legacy.length) return;   // nothing legacy left — idempotent
+
+  const stmts = [];
+  for (const oldStage of legacy) {
+    const m = remapStage(oldStage);
+    const sets = ['stage = ?'];
+    const binds = [m.stage];
+    if (m.heat) { sets.push("heat = COALESCE(NULLIF(heat, ''), ?)"); binds.push(m.heat); }
+    if (m.dormant) sets.push('dormant = 1');
+    binds.push(oldStage);
+    stmts.push(env.DB.prepare(`UPDATE contacts SET ${sets.join(', ')} WHERE stage = ?`).bind(...binds));
+  }
+  for (const group of chunk(stmts, 50)) await env.DB.batch(group);
 }
 
 /** Create/migrate/seed everything. Cheap and idempotent; cached per isolate. */
@@ -251,10 +296,10 @@ export async function ensureSchema(env) {
   await env.DB.batch(CREATE_STATEMENTS.map((s) => env.DB.prepare(s)));
   for (const [table, col, decl] of COLUMN_MIGRATIONS) await addColumnIfMissing(env, table, col, decl);
   await seedContactsIfEmpty(env);
+  await migrateToFinalModel(env);   // remap seeded + any existing rows to the finalised model first
   await seedTagsIfEmpty(env);
-  await seedTasksIfEmpty(env);
+  await seedTasksIfEmpty(env);      // so starter tasks attach to new-stage contacts
   await seedSegmentsIfEmpty(env);
-  await migrateLegacyStages(env);
   schemaReady = true;
 }
 
@@ -293,8 +338,8 @@ export async function latestRepliesByContact(env) {
  */
 export async function loadCompactBook(env, limit = 2000) {
   const res = await env.DB.prepare(
-    `SELECT id, fullName, organisation, email, phone, whatsapp, entityType, stage, country, city,
-            tier, priority, relationshipOwner, lastContact, nextActionDate, signal
+    `SELECT id, fullName, organisation, email, phone, whatsapp, entityType, stage, heat, dormant, closedStatus,
+            country, city, tier, priority, relationshipOwner, lastContact, nextActionDate, signal
        FROM contacts ORDER BY updatedAt DESC LIMIT ?`,
   ).bind(Math.max(1, Math.min(limit, 20000))).all();
   return res.results || [];

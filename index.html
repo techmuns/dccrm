@@ -387,6 +387,7 @@ body {
 .col-desig   { width:150px; flex:none; }
 .col-country { width:120px; flex:none; }
 .col-stage   { width:150px; flex:none; }
+.col-heat    { width:104px; flex:none; }
 .col-owner   { width:118px; flex:none; }
 .col-next    { width:120px; flex:none; }
 .col-last    { width:118px; flex:none; }
@@ -397,7 +398,7 @@ body {
 .row-action:hover { color:var(--c1); background:var(--sel); border-color:var(--sel-line); }
 .row-action:focus-visible { outline:none; color:var(--c1); border-color:#d59db1; box-shadow:0 0 0 2px rgba(168,58,91,.15); }
 @media (max-width:1180px){ .col-desig { display:none; } }
-@media (max-width:960px){ .col-owner { display:none; } .col-last { display:none; } }
+@media (max-width:960px){ .col-owner { display:none; } .col-last { display:none; } .col-heat { display:none; } }
 @media (max-width:720px){ .col-country { display:none; } }
 
 /* ---------- urgency buckets (Follow-ups) ---------- */
@@ -789,11 +790,11 @@ button.fu-name:hover .nm { color:var(--c1); text-decoration:underline; }
 .cell-edit:focus { outline:none; border-color:#d59db1; box-shadow:0 0 0 2px rgba(168,58,91,.15); }
 select.cell-edit { appearance:none; padding-right:1.15rem;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right .25rem center; }
-.stage-edit { font-weight:600; color:#3a3a42; padding-left:1.1rem; position:relative;
+.stage-edit, .heat-edit { font-weight:600; color:#3a3a42; padding-left:1.1rem; position:relative;
   background-color:color-mix(in srgb, var(--c) 12%, #fff);
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 24%, #fff),
              inset .5rem 0 0 -.32rem var(--c); }
-.stage-edit:hover { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, #fff), inset .5rem 0 0 -.32rem var(--c), 0 1px 3px rgba(15,23,42,.1); }
+.stage-edit:hover, .heat-edit:hover { box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, #fff), inset .5rem 0 0 -.32rem var(--c), 0 1px 3px rgba(15,23,42,.1); }
 .owner-edit { color:var(--ink-2); }
 .date-edit { font-variant-numeric:tabular-nums; }
 .date-edit.is-overdue { color:#c0392b; font-weight:600; border-color:#e6c3bd; }
@@ -860,6 +861,39 @@ select.grid-input { appearance:none; cursor:pointer;
 .mode-toggle button[aria-pressed="true"] { color:var(--c1); background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.1); }
 .grid-hint { display:flex; align-items:center; gap:.4rem; font-size:var(--fs-caption); color:var(--ink-3); }
 @media (min-width:1024px){ .tab-panel--fill .grid-scroll { height:auto; } }
+
+/* =========================================================================
+   Phase 9 — finalised pipeline (Stage · Heat · Dormant · Closed)
+   ========================================================================= */
+
+/* Stage cell in the View table: inline editor + a small parked badge */
+.stage-cell { display:inline-flex; align-items:center; gap:.4rem; min-width:0; max-width:100%; }
+.stage-cell > .cell-edit { min-width:0; }
+.dormant-badge { flex:none; font-size:.58rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+  color:#6b6b72; background:#ededea; border:1px solid #dcdcd9; border-radius:3px; padding:.08rem .3rem; }
+
+/* Closed records read as a chip, not a stage (kept out of the funnel) */
+.closed-chip { display:inline-flex; align-items:center; gap:.32rem; font-size:var(--fs-caption); font-weight:600;
+  color:var(--danger); background:color-mix(in srgb, var(--danger) 8%, #fff);
+  border:1px solid color-mix(in srgb, var(--danger) 22%, #fff); border-radius:3px; padding:.16rem .5rem; white-space:nowrap; }
+
+/* the Active ⇄ Closed ⇄ All scope toggle sits beside the View/Edit toggle */
+.scope-toggle { margin-left:.4rem; }
+
+/* ---------- drawer: interactive Pipeline panel ---------- */
+.pipe-panel .pipe-row { display:flex; align-items:center; gap:.6rem; padding:.32rem 0; margin:0; }
+.pipe-row > .field-input { flex:1 1 auto; min-width:0; }
+.pipe-lbl { flex:none; width:3.4rem; font-size:var(--fs-caption); font-weight:600; color:var(--ink-3); }
+.pipe-hint { margin:.05rem 0 .55rem 4rem; font-size:var(--fs-caption); font-style:italic; color:var(--ink-3); line-height:1.45; }
+.pipe-inline { display:inline-flex; align-items:center; gap:.4rem; }
+.pipe-inline .pipe-lbl { width:auto; }
+.pipe-date { flex:none; width:9.5rem; max-width:100%; }
+.pipe-close, .pipe-closed { display:flex; flex-wrap:wrap; align-items:center; gap:.45rem; padding:.5rem 0 .2rem; }
+.pipe-close > .pipe-lbl { width:auto; }
+.pipe-close .pipe-inline, .pipe-closed .pipe-inline { margin-left:auto; }
+.pipe-closed { border-top:1px solid var(--line-soft); margin-top:.3rem; }
+.pipe-closed-l { display:inline-flex; align-items:center; gap:.35rem; font-size:var(--fs-body); font-weight:600; color:var(--danger);
+  width:100%; }
 
 /* ---------- Phase 3 — intelligence layer (update box · ask · priorities · draft) ---------- */
 .ai-hdr-btn { color:#fff; background:var(--c1); box-shadow:0 1px 2px rgba(var(--c1-rgb),.20); }

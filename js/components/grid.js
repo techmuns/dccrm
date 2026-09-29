@@ -111,9 +111,13 @@ export function mountGrid(container, {
   }
 
   /* ---------- cell display ---------- */
+  const isTruthyFlag = (v) => v === 1 || v === true || /^(1|yes|true|y)$/i.test(String(v ?? ''));
+  const CLOSED_TEXT = { passed: 'Passed', disqualified: 'Disqualified' };
   function displayValue(contact, col) {
     const raw = contact[col.key];
     if (col.type === 'date') { const d = parseDate(raw); return d ? formatDate(d) : ''; }
+    if (col.type === 'bool') return isTruthyFlag(raw) ? 'Yes' : '';
+    if (col.type === 'closed') return CLOSED_TEXT[String(raw ?? '').toLowerCase()] || '';
     return tidy(raw);
   }
 
@@ -213,6 +217,21 @@ export function mountGrid(container, {
       sel.value = value || '';
       return sel;
     }
+    if (col.type === 'bool') {   // Dormant toggle (Yes / No)
+      const sel = h('select', { class: 'grid-input' }, [h('option', { value: '', text: 'No' }), h('option', { value: 'Yes', text: 'Yes' })]);
+      sel.value = isTruthyFlag(value) ? 'Yes' : '';
+      return sel;
+    }
+    if (col.type === 'closed') {   // Closed state: Open / Passed / Disqualified (Open = reopen)
+      const cur = String(value ?? '').toLowerCase();
+      const sel = h('select', { class: 'grid-input' }, [
+        h('option', { value: '', text: 'Open' }),
+        h('option', { value: 'passed', text: 'Passed' }),
+        h('option', { value: 'disqualified', text: 'Disqualified' }),
+      ]);
+      sel.value = CLOSED_TEXT[cur] ? cur : '';
+      return sel;
+    }
     if (col.type === 'date') return h('input', { class: 'grid-input', type: 'date', value: value || '' });
     const input = h('input', {
       class: 'grid-input', type: col.type === 'email' ? 'email' : 'text', value: value || '',
@@ -267,7 +286,7 @@ export function mountGrid(container, {
     };
     input.addEventListener('keydown', onKey);
     input.addEventListener('blur', () => finish(true));
-    if (col.type === 'enum' || col.type === 'date') input.addEventListener('change', () => finish(true));
+    if (['enum', 'date', 'bool', 'closed'].includes(col.type)) input.addEventListener('change', () => finish(true));
   }
 
   const blankContact = () => ({});

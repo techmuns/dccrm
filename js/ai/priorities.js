@@ -10,9 +10,10 @@
  * adds a one-line "why now" per row, and the panel works fully without it.
  */
 import { h, icon, refreshIcons, toast, card } from '../ui.js';
-import { ACTIVE_STAGES, STAGE_HOT, PALETTE } from '../config.js';
+import { ACTIVE_STAGES, PALETTE } from '../config.js';
 import { daysFromToday, formatDate, tidy, formatNumber } from '../util.js';
 import { openDrawer } from '../components/drawer.js';
+import { isClosed } from '../data.js';
 import * as store from '../store.js';
 
 export const QUIET_DAYS = 30;   // "gone quiet" threshold (a single constant, as asked)
@@ -37,20 +38,22 @@ export function priorityItems(contacts) {
     seen.add(c.id);
     items.push({ contact: c, reasonType, why, suggest, urgency });
   };
-  for (const c of contacts) {                        // 1. overdue (most overdue first)
+  // Closed (Passed / Disqualified) and Dormant (parked) records are intentionally out of view.
+  const pool = contacts.filter((c) => !isClosed(c) && !c.dormant);
+  for (const c of pool) {                            // 1. overdue (most overdue first)
     const d = daysFromToday(c.nextActionAt);
     if (d != null && d < 0) add(c, 'overdue', `Overdue by ${Math.abs(d)} day${Math.abs(d) === 1 ? '' : 's'}`, tidy(c.nextAction) || 'Do the next action now', 1000 + Math.abs(d));
   }
-  for (const c of contacts) {                        // 2. hot, no next step
-    if (c.stage === STAGE_HOT && !tidy(c.nextActionDate)) add(c, 'hot', 'Hot, but no next step set', 'Set a next step — keep the momentum', 900);
+  for (const c of pool) {                            // 2. Hot heat, no next step
+    if (c.heat === 'Hot' && !tidy(c.nextActionDate)) add(c, 'hot', 'Hot, but no next step set', 'Set a next step — keep the momentum', 900);
   }
-  for (const c of contacts) {                        // 3. gone quiet
+  for (const c of pool) {                            // 3. gone quiet
     if (!ACTIVE_STAGES.includes(c.stage)) continue;
     const since = daysFromToday(c.lastContactAt);
     if (since == null) add(c, 'quiet', `In ${c.stage}, no contact on record`, 'Reach out — re-open the conversation', 700);
     else if (since < -QUIET_DAYS) add(c, 'quiet', `No contact in ${Math.abs(since)} days`, 'Re-engage — it has gone quiet', 700 + Math.min(Math.abs(since), 200));
   }
-  for (const c of contacts) {                        // 4. high value, never contacted
+  for (const c of pool) {                            // 4. high value, never contacted
     if (isHigh(c) && !tidy(c.lastContact)) add(c, 'high', `${/^a$/i.test(tidy(c.tier)) ? 'Top tier' : 'High priority'}, never contacted`, 'Make first contact', 500);
   }
   items.sort((a, b) => b.urgency - a.urgency);

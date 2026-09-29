@@ -12,6 +12,7 @@ import { h, icon, refreshIcons, toast } from '../ui.js';
 import { formatNumber, tidy, debounce } from '../util.js';
 import { createFilterBar } from '../components/filterbar.js';
 import { chipCell } from '../components/cells.js';
+import { isClosed } from '../data.js';
 import { takeComposeAudience } from '../nav.js';
 import {
   sendListParts, exportSendListXlsx, exportSendListCsv, sendListTsv, copyToClipboard,
@@ -71,6 +72,7 @@ export function render(container) {
   const filterBar = createFilterBar({
     dimensions: [
       { field: 'stage', label: 'Stage', icon: 'git-branch' },
+      { field: 'heat', label: 'Heat', icon: 'flame' },
       { field: 'entityType', label: 'Type', icon: 'building-2' },
       { field: 'country', label: 'Country', icon: 'globe' },
       { field: 'relationshipOwner', label: 'Owner', icon: 'user-round' },
@@ -208,9 +210,10 @@ export function render(container) {
   /* ---------- audience logic ---------- */
   function baseList() {
     const all = currentState?.contacts || [];
-    if (handoffIds) return all.filter((c) => handoffIds.has(c.id));
-    if (source === 'everyone') return all;
-    return filterBar.apply(all);
+    if (handoffIds) return all.filter((c) => handoffIds.has(c.id));   // respect an explicit handoff
+    const pool = all.filter((c) => !isClosed(c));   // never email Closed (Passed / Disqualified) records
+    if (source === 'everyone') return pool;
+    return filterBar.apply(pool);
   }
   function audience() { const set = checked; return baseList().filter((c) => set.has(c.id)); }
   function resetChecked() { checked = new Set(baseList().map((c) => c.id)); }

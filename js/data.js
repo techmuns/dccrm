@@ -8,14 +8,17 @@
  */
 import {
   HEADER_MAP, FIELDS, SEARCH_FIELDS, ALL_STAGES, STAGE_ORDER,
-  STAGE_DORMANT, STAGE_HOT, STAGE_FUNDED, ACTIVE_STAGES, NEUTRAL,
+  STAGE_INVESTED, ACTIVE_STAGES, HEAT_VALUES, NEUTRAL,
 } from './config.js';
 import { registerDimension, colorOf, resetColors } from './colors.js';
 import { headerKey, tidy, parseDate, daysFromToday, countBy, rank } from './util.js';
 
 /* Dimensions that get a stable colour assignment at load time. The Overview tab
    uses the first four; the rest are registered now so later tabs inherit them. */
-export const COLOURED_DIMENSIONS = ['stage', 'entityType', 'country', 'source', 'relationshipOwner', 'vehicle', 'role'];
+export const COLOURED_DIMENSIONS = ['stage', 'heat', 'entityType', 'country', 'source', 'relationshipOwner', 'vehicle', 'role'];
+
+/** A record is "closed" (Passed / Disqualified) — outside the six active stages. */
+export const isClosed = (c) => !!(c && tidy(c.closedStatus));
 
 /** Canonical spelling for a stage, matched case- and space-insensitively. */
 function canonicalStage(value) {
@@ -24,6 +27,13 @@ function canonicalStage(value) {
   const key = headerKey(raw);
   const match = ALL_STAGES.find((stage) => headerKey(stage) === key);
   return match || raw; // an unknown stage is kept as written rather than dropped
+}
+
+/** Canonical Heat value (Hot / Warm / Cold), matched case-insensitively; else blank. */
+function canonicalHeat(value) {
+  const key = headerKey(value);
+  if (!key) return '';
+  return HEAT_VALUES.find((h) => headerKey(h) === key) || '';
 }
 
 /** Fix known spelling slips in Entity Type (e.g. the sheet's "Fmaily Office"); else keep as written. */
@@ -72,10 +82,11 @@ export function mapHeaders(headers) {
  */
 export function normalizeContact(row) {
   const contact = {};
+  const RAW_DATE_FIELDS = ['lastContact', 'nextActionDate', 'wakeDate', 'revisitDate'];
   for (const field of FIELDS) {
     const value = row[field];
     contact[field] = value == null ? ''
-      : (field === 'lastContact' || field === 'nextActionDate' ? value : tidy(value));
+      : (RAW_DATE_FIELDS.includes(field) ? value : tidy(value));
   }
   if (row.id != null) contact.id = row.id;
   if (row.createdAt) contact.createdAt = row.createdAt;
@@ -93,10 +104,18 @@ export function normalizeContact(row) {
   contact.stage = canonicalStage(contact.stage);
   contact.entityType = canonicalEntityType(contact.entityType);
   contact.whatsappOptIn = canonicalOptIn(contact.whatsappOptIn);
+  // Finalised model (Phase 9): Heat / Dormant / Closed are separate from Stage.
+  contact.heat = canonicalHeat(contact.heat);
+  contact.dormant = row.dormant === 1 || row.dormant === true || /^(1|yes|true|y)$/i.test(String(row.dormant ?? ''));
+  contact.closedStatus = tidy(contact.closedStatus).toLowerCase();
   contact.lastContactAt = parseDate(contact.lastContact);
   contact.nextActionAt = parseDate(contact.nextActionDate);
+  contact.wakeDateAt = parseDate(contact.wakeDate);
+  contact.revisitDateAt = parseDate(contact.revisitDate);
   contact.lastContact = contact.lastContactAt ? toISO(contact.lastContactAt) : tidy(contact.lastContact);
   contact.nextActionDate = contact.nextActionAt ? toISO(contact.nextActionAt) : tidy(contact.nextActionDate);
+  contact.wakeDate = contact.wakeDateAt ? toISO(contact.wakeDateAt) : tidy(contact.wakeDate);
+  contact.revisitDate = contact.revisitDateAt ? toISO(contact.revisitDateAt) : tidy(contact.revisitDate);
   const tagNames = contact.tags.map((t) => t.name).join(' ');
   contact.searchBlob = (SEARCH_FIELDS.map((f) => contact[f]).join(' ') + ' ' + tagNames).toLowerCase();
   return contact;
@@ -170,44 +189,51 @@ export function applySearch(contacts, query) {
   return contacts.filter((c) => terms.every((term) => c.searchBlob.includes(term)));
 }
 
-/** The four honest numbers across the top. */
+/** The four honest numbers across the top. Closed records sit outside the active numbers. */
 export function headlineNumbers(contacts) {
   let active = 0;
-  let funded = 0;
+  let invested = 0;
   let dueThisWeek = 0;
   let overdue = 0;
+  let closed = 0;
+  let dormant = 0;
 
   for (const c of contacts) {
+    if (isClosed(c)) { closed += 1; continue; }   // closed are out of the active pipeline
+    if (c.dormant) dormant += 1;
     if (ACTIVE_STAGES.includes(c.stage)) active += 1;
-    if (c.stage === STAGE_FUNDED) funded += 1;
+    if (c.stage === STAGE_INVESTED) invested += 1;
     const days = daysFromToday(c.nextActionAt);
     if (days != null) {
       if (days >= 0 && days <= 7) dueThisWeek += 1;
       else if (days < 0) overdue += 1;
     }
   }
-  return { total: contacts.length, active, funded, dueThisWeek, overdue };
+  return { total: contacts.length, active, invested, dueThisWeek, overdue, closed, dormant };
 }
 
-/** Counts per pipeline stage, in pipeline order. Dormant is reported separately. */
+/**
+ * Counts per pipeline stage, in pipeline order — over the ACTIVE (non-closed) records only.
+ * Closed (Passed / Disqualified) and Dormant are reported separately, not in the funnel.
+ */
 export function pipelineStages(contacts) {
-  const counts = countBy(contacts, 'stage');
-  const total = contacts.length;
+  const open = contacts.filter((c) => !isClosed(c));   // the funnel is the active pipeline
+  const counts = countBy(open, 'stage');
+  const total = open.length;
   const stages = STAGE_ORDER.map((name) => ({
     name,
     value: counts.get(name) || 0,
     share: total ? (counts.get(name) || 0) / total : 0,
     color: colorOf('stage', name),
   }));
-  // Anything outside the funnel: the two real side-statuses (Hot, Dormant) surfaced
-  // on their own, plus any other stage value the data happens to contain.
-  const extra = [...counts.keys()].filter((name) => !STAGE_ORDER.includes(name));
-  const hot = counts.get(STAGE_HOT) || 0;
-  const dormant = counts.get(STAGE_DORMANT) || 0;
-  const otherNames = extra.filter((name) => name !== STAGE_HOT && name !== STAGE_DORMANT);
-  const otherTotal = otherNames.reduce((sum, name) => sum + (counts.get(name) || 0), 0);
-  const outsideTotal = extra.reduce((sum, name) => sum + (counts.get(name) || 0), 0);
-  return { stages, hot, dormant, otherTotal, otherNames, outsideTotal, outsideNames: extra };
+  const dormant = open.reduce((sum, c) => sum + (c.dormant ? 1 : 0), 0);
+  let passed = 0;
+  let disqualified = 0;
+  for (const c of contacts) {
+    if (c.closedStatus === 'passed') passed += 1;
+    else if (c.closedStatus === 'disqualified') disqualified += 1;
+  }
+  return { stages, dormant, passed, disqualified, closed: passed + disqualified, total };
 }
 
 /**

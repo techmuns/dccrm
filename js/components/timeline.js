@@ -21,26 +21,40 @@ const KIND = {
   task: { color: '#c08a2e', icon: 'circle-check-big', label: 'Task' },
   'email-in': { color: '#4c6ea5', icon: 'mail', label: 'Email in' },
   'email-out': { color: '#2e8b74', icon: 'send', label: 'Email out' },
+  // Finalised-model pipeline events (Phase 9)
+  heat: { color: '#c0392b', icon: 'flame', label: 'Heat change' },
+  dormant: { color: '#8f8f96', icon: 'moon', label: 'Dormant' },
+  status: { color: '#c0392b', icon: 'circle-slash', label: 'Status' },
 };
 
-/* per activity-type icon (all of these fall under the "Notes" filter bar the stage/email ones). */
-const ACT_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'send', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', Other: 'circle-dot' };
+/* per activity-type icon; anything not here falls back to its kind's icon. */
+const ACT_ICON = {
+  Note: 'sticky-note', Call: 'phone', Email: 'send', Meeting: 'users', WhatsApp: 'message-circle',
+  'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', Other: 'circle-dot',
+};
 
-/* filter chips → which kinds each one keeps (null = everything). */
+/* filter chips → which kinds each one keeps (null = everything). "Pipeline" covers every
+   Stage / Heat / Dormant / Close-Reopen movement. */
 const FILTERS = [
   { key: 'all', label: 'All', kinds: null },
   { key: 'notes', label: 'Notes', kinds: ['note'] },
-  { key: 'stage', label: 'Stage changes', kinds: ['stage'] },
+  { key: 'pipeline', label: 'Pipeline', kinds: ['stage', 'heat', 'dormant', 'status'] },
   { key: 'tasks', label: 'Tasks', kinds: ['task'] },
   { key: 'emails', label: 'Emails', kinds: ['email-in', 'email-out'] },
 ];
 
-/** A logged activity's kind: stage changes and emails split out; everything else is a "note". */
+/** A logged activity's kind. Pipeline movements split out; emails split out; else a "note". */
 function kindForActivity(type) {
   if (type === 'Stage change') return 'stage';
+  if (type === 'Heat change') return 'heat';
+  if (type === 'Dormant') return 'dormant';
+  if (type === 'Status') return 'status';
   if (type === 'Email') return 'email-out';   // a manually-logged email is an outbound touch
   return 'note';                              // Note · Call · Meeting · WhatsApp · Other
 }
+
+/* Pipeline-movement kinds are not "touches" (they're internal bookkeeping, not outreach). */
+const PIPELINE_KINDS = new Set(['stage', 'heat', 'dormant', 'status']);
 
 /** Turn the raw detail (activities + replies + tasks) into one flat, grounded event list. */
 function buildEvents(detail) {
@@ -51,13 +65,15 @@ function buildEvents(detail) {
     let title = a.type || 'Note';
     let body = a.summary || '';
     if (kind === 'stage') { title = 'Stage change'; body = String(a.summary || '').replace(/^Stage:\s*/i, ''); }
+    else if (kind === 'heat') { title = 'Heat change'; body = String(a.summary || '').replace(/^Heat:\s*/i, ''); }
+    else if (kind === 'dormant' || kind === 'status') { title = KIND[kind].label; }
     events.push({
       kind,
       when: parseDate(a.occurredAt) || parseDate(a.createdAt),
       iconName: ACT_ICON[a.type] || KIND[kind].icon,
       title, body,
-      source: tidy(a.source) || (kind === 'stage' ? 'Manual' : ''),
-      isTouch: kind !== 'stage',
+      source: tidy(a.source) || (PIPELINE_KINDS.has(kind) ? 'Manual' : ''),
+      isTouch: !PIPELINE_KINDS.has(kind),
     });
   }
 

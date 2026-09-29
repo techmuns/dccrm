@@ -70,6 +70,7 @@ export function bucketCounts(contacts) {
  * `days` ago, or no contact on record at all despite an active stage.
  */
 export function needsNudge(contact, days = 30) {
+  if (contact.closedStatus || contact.dormant) return false;   // closed / parked are out of view
   if (!ACTIVE_STAGES.includes(contact.stage)) return false;
   const since = daysFromToday(contact.lastContactAt);
   return since == null || since < -days;
@@ -105,7 +106,8 @@ const CSV_HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
   designation: 'Designation', email: 'Email', phone: 'Phone (display)', altPhone: 'Alt Phone',
   whatsapp: 'WhatsApp Number (E.164)', whatsappOptIn: 'WhatsApp Opt-In', country: 'Primary Country', city: 'Primary City',
-  vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
+  vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant', wakeDate: 'Wake Date',
+  closedStatus: 'Closed Status', revisitDate: 'Revisit Date', tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
   lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
   relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
   notes: 'Notes', roughNotes: 'Rough Notes for Raghav',
