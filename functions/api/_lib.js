@@ -181,6 +181,10 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'reportingStatus', 'TEXT'],
   ['contacts', 'topUpPotential', 'TEXT'],
   ['contacts', 'redemptionRisk', 'TEXT'],
+  // Phase-12: inbound email reader — the classifier's extra signals on each reply.
+  ['replies', 'category', 'TEXT'],
+  ['replies', 'intent', 'TEXT'],
+  ['replies', 'suggestedStage', 'TEXT'],
 ];
 
 /* Dhamma's FINALISED pipeline (Phase 9). The single source of truth the AI layer validates

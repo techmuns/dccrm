@@ -989,6 +989,34 @@ select.lp-sig { width:100%; font-weight:600; color:#3a3a42; padding-left:1.05rem
 .tu-req { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--amber);
   background:color-mix(in srgb, var(--amber) 12%, #fff); border-radius:3px; padding:.03rem .3rem; }
 
+/* =========================================================================
+   Phase 12 — Inbox / new replies (email → CRM)
+   ========================================================================= */
+.inbox-host { display:flex; flex-direction:column; gap:.7rem; }
+.inbox-row { border:1px solid var(--line); border-radius:4px; padding:.75rem .85rem; background:#fff; }
+.inbox-row:hover { border-color:#dcdcd9; }
+.inbox-top { display:flex; align-items:flex-start; gap:.75rem; flex-wrap:wrap; }
+.inbox-name { display:flex; flex-direction:column; text-align:left; background:none; border:0; padding:0; cursor:pointer; min-width:0; flex:1 1 12rem; }
+.inbox-name .nm { font-weight:700; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-name .sub { font-size:var(--fs-caption); color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.inbox-name:hover .nm { color:var(--c1); }
+.inbox-meta { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+.inbox-cat { font-size:var(--fs-caption); font-weight:600; color:#3a5a8c; background:color-mix(in srgb, #4c6ea5 12%, #fff);
+  border:1px solid color-mix(in srgb, #4c6ea5 26%, #fff); border-radius:3px; padding:.12rem .5rem; white-space:nowrap; }
+.inbox-sent { display:inline-flex; align-items:center; gap:.3rem; font-size:var(--fs-caption); font-weight:600; color:var(--c); }
+.inbox-sent .dot { width:.5rem; height:.5rem; border-radius:50%; background:var(--c); }
+.inbox-stage { display:inline-flex; align-items:center; gap:.25rem; font-size:var(--fs-caption); font-weight:600; color:var(--ink-2);
+  background:#f2f4f8; border:1px solid var(--line); border-radius:3px; padding:.12rem .45rem; white-space:nowrap; }
+.inbox-date { font-size:var(--fs-caption); color:var(--ink-3); font-variant-numeric:tabular-nums; margin-left:auto; }
+.inbox-subject { font-weight:600; color:var(--ink); margin-top:.5rem; font-size:var(--fs-body); }
+.inbox-summary { color:var(--ink-2); font-size:var(--fs-body); margin:.25rem 0 0; line-height:1.5; }
+.inbox-draftwrap { margin-top:.6rem; border-top:1px solid var(--line-soft); padding-top:.55rem; }
+.inbox-draft-l { display:flex; align-items:center; gap:.35rem; font-size:var(--fs-caption); font-weight:600; color:var(--ink-3); margin-bottom:.35rem; }
+.inbox-draft { width:100%; font-size:var(--fs-body); line-height:1.5; resize:vertical; min-height:5.5rem; }
+.inbox-actions { display:flex; gap:.4rem; margin-top:.5rem; flex-wrap:wrap; }
+.inbox-empty { text-align:center; padding:2.5rem 1rem; color:var(--ink-3); }
+.inbox-empty-t { font-weight:600; color:var(--ink-2); margin:.4rem 0 .1rem; }
+
 /* ---------- Phase 3 — intelligence layer (update box · ask · priorities · draft) ---------- */
 .ai-hdr-btn { color:#fff; background:var(--c1); box-shadow:0 1px 2px rgba(var(--c1-rgb),.20); }
 .ai-hdr-btn:hover { background:var(--primary-strong); box-shadow:0 1px 3px rgba(var(--c1-rgb),.30); }

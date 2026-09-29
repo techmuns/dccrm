@@ -137,6 +137,96 @@ export function heuristicReply(reply) {
   };
 }
 
+/* =====================================================================================
+ * PHASE 12 — inbound email reader (email → CRM). The endpoint reads ONE inbound email and
+ * classifies it into a grounded shape the CRM can act on. The model is given ONLY the email
+ * (and the matched contact, if any) and must pick a category + a REAL stage from the lists
+ * the endpoint passes in. The parser keeps only allowed categories/stages, so nothing shown
+ * or applied is invented. A labelled heuristic stands in when Bedrock is not configured.
+ * ===================================================================================== */
+
+export const INBOUND_CATEGORIES = [
+  'Wants info/deck', 'Wants a call', 'Proceeding', 'Not now', 'Objection/question', 'Committed', 'Other',
+];
+
+export function buildInboundSystem(stages, categories) {
+  return [
+    'You are an investor-relations analyst for Dhamma Capital, an investment fund. You read ONE inbound email from a prospective or existing investor and classify it, using ONLY what the email says — never invent facts, numbers, terms or commitments.',
+    'Reply with STRICT JSON only — no prose, no markdown fences — exactly this shape:',
+    '{"intent":"<what the sender wants, <=60 chars>","category":"<one category>","sentiment":"Positive"|"Neutral"|"Negative","suggestedStage":"<one stage, or empty>","summary":"<one plain sentence, <=140 chars>","suggestedReply":"<a warm, concise, professional draft reply the IR team could send, <=900 chars>","confidence":<0..1>}',
+    `category MUST be EXACTLY one of: ${categories.join(' | ')}.`,
+    `suggestedStage MUST be EXACTLY one of these stages, or empty when the email does not clearly justify a move: ${stages.join(' | ')}.`,
+    'Only suggest a more advanced stage when the email genuinely supports it: asking for a deck/call or a two-way exchange → Engaged; active diligence questions (fees, lock-up, DDQ) → Diligence; a clear verbal yes with an amount → Committed. If unsure, leave suggestedStage empty and lower the confidence.',
+    'The draft reply must answer or acknowledge the sender\'s questions, keep Dhamma Capital\'s calm professional tone, and never invent numbers, terms or commitments. confidence is how sure you are of the category and stage (0..1).',
+  ].join('\n');
+}
+
+export function buildInboundUser(email, contact) {
+  const ctx = contact
+    ? `Known contact: ${contact.fullName || ''}${contact.organisation ? ' · ' + contact.organisation : ''}${contact.stage ? ' · current stage ' + contact.stage : ''}\n\n`
+    : 'This sender is not yet a known contact.\n\n';
+  const from = email.fromEmail || email.from || 'unknown sender';
+  const body = cap(str(email.body ?? email.text ?? email.snippet), 6000);
+  return `${ctx}From: ${email.fromName ? email.fromName + ' <' + from + '>' : from}\nSubject: ${email.subject || '(no subject)'}\n\n${body}`;
+}
+
+export const INBOUND_PROMPT = (email, contact, stages, categories = INBOUND_CATEGORIES) => ({
+  system: buildInboundSystem(stages, categories),
+  user: buildInboundUser(email, contact),
+  maxTokens: 1100,
+});
+
+/** Validate the classifier's JSON against the allowed categories + real stages. */
+export function parseInbound(text, { stages = [], categories = INBOUND_CATEGORIES } = {}) {
+  const obj = extractJson(text);
+  if (!obj || typeof obj !== 'object') throw new Error('AI did not return usable JSON.');
+  let suggestedStage = str(obj.suggestedStage);
+  if (suggestedStage && !stages.includes(suggestedStage)) suggestedStage = '';
+  return {
+    intent: cap(str(obj.intent), 80) || 'Replied',
+    category: oneOf(obj.category, categories, 'Other'),
+    sentiment: oneOf(obj.sentiment, ['Positive', 'Neutral', 'Negative'], 'Neutral'),
+    suggestedStage,
+    summary: cap(str(obj.summary), 200) || 'Email received.',
+    suggestedReply: cap(str(obj.suggestedReply), 1500),
+    confidence: clampNum(obj.confidence, 0, 1),
+    model: 'bedrock',
+  };
+}
+
+/**
+ * TEST-MODE / no-key fallback: a transparent keyword heuristic so the whole email → CRM
+ * pipeline is demonstrable without Bedrock. Clearly labelled (model "test-heuristic") and
+ * replaced by real Bedrock output the moment BEDROCK_API_KEY is set. suggestedStage here is
+ * a plain forward hint; the endpoint still clamps it to the allowed stages AND the gates.
+ */
+export function heuristicInbound(email) {
+  const t = (str(email.body ?? email.text) + ' ' + str(email.subject)).toLowerCase();
+  const has = (re) => re.test(t);
+  const neg = has(/not (the )?right|isn.t (the )?right|fully allocated|\bpass\b|decline|not interested|no longer|too high|unsubscribe|revisit (early )?next/);
+  const committed = has(/we(?:'| a)?re in\b|happy to commit|go ahead|allocate|subscribe|wire the|invest \$|invest ₹|verbal (yes|commit)/);
+  const proceeding = has(/move to diligence|due diligence|take (this|it) to (our )?(ic|committee|investment committee)|proceed to|ready to progress|next step/);
+  const wantsCall = has(/\bcall\b|meeting|\bmeet\b|catch up|speak|schedule a|calendar|zoom|teams/);
+  const wantsInfo = has(/\bdeck\b|factsheet|track record|\bddq\b|materials|documents|more (info|detail)|send (me|us|over|across)|share (the|more)/);
+  const question = has(/\?|fees|lock-?up|liquid|redempt|minimum|capacity|\baum\b|nda/);
+  let category = 'Other', sentiment = 'Neutral', suggestedStage = '', confidence = 0.4, intent = 'Replied';
+  if (neg) { category = 'Not now'; sentiment = 'Negative'; intent = 'Not now — revisit later'; confidence = 0.7; }
+  else if (committed) { category = 'Committed'; sentiment = 'Positive'; intent = 'Verbal commitment'; suggestedStage = 'Committed'; confidence = 0.7; }
+  else if (proceeding) { category = 'Proceeding'; sentiment = 'Positive'; intent = 'Ready to progress'; suggestedStage = 'Diligence'; confidence = 0.7; }
+  else if (wantsCall) { category = 'Wants a call'; sentiment = 'Positive'; intent = 'Wants a call'; suggestedStage = 'Engaged'; confidence = 0.72; }
+  else if (wantsInfo) { category = 'Wants info/deck'; sentiment = 'Positive'; intent = 'Wants materials'; suggestedStage = 'Engaged'; confidence = 0.72; }
+  else if (question) { category = 'Objection/question'; sentiment = 'Neutral'; intent = 'Has questions'; confidence = 0.55; }
+  const first = cap(str(email.body ?? email.text).replace(/\s+/g, ' ').trim(), 140);
+  return {
+    intent, category, sentiment, suggestedStage,
+    summary: first || 'Email received.',
+    suggestedReply:
+      `Dear ${str(email.fromName) || 'investor'},\n\nThank you for your note — we appreciate you getting back to us${question ? ', and for the questions you raised' : ''}. ` +
+      'We would be glad to help with the next step; would a short call in the coming days suit you?\n\nWarm regards,\nDhamma Capital — Investor Relations',
+    confidence, model: 'test-heuristic',
+  };
+}
+
 /* ---------- shared JSON extraction + tiny validators ---------- */
 
 /** Pull the first JSON object out of model text, tolerating ```fences``` and stray prose. */
