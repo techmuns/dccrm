@@ -689,7 +689,7 @@ function followupHint(contact) {
 /* ---------- activity timeline ---------- */
 
 const ACTIVITY_TYPES = ['Note', 'Call', 'Email', 'Meeting', 'WhatsApp', 'Other'];
-const ACTIVITY_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'mail', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', Other: 'circle-dot' };
+const ACTIVITY_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'mail', 'Email in': 'mail', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', 'Top-up': 'copy-plus', LP: 'landmark', Other: 'circle-dot' };
 
 function renderActivityInto(contact, host, activities) {
   const list = h('ul', { class: 'timeline' });

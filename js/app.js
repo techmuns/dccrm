@@ -11,6 +11,7 @@ import { registerTab, mountTabs, pushState } from './router.js';
 import { render as renderOverview } from './tabs/overview.js';
 import { render as renderContacts } from './tabs/contacts.js';
 import { render as renderFollowups } from './tabs/followups.js';
+import { render as renderInbox } from './tabs/inbox.js';
 import { render as renderLpBook } from './tabs/lpbook.js';
 import { render as renderCampaigns } from './tabs/campaigns.js';
 import { render as renderCompose } from './tabs/compose.js';
@@ -43,6 +44,7 @@ const el = {
 registerTab('overview', { render: renderOverview });
 registerTab('contacts', { render: renderContacts });
 registerTab('followups', { render: renderFollowups });
+registerTab('inbox', { render: renderInbox });
 registerTab('lpbook', { render: renderLpBook });
 registerTab('campaigns', { render: renderCampaigns });
 registerTab('compose', { render: renderCompose });

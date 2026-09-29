@@ -197,6 +197,7 @@ export const TABS = [
   { id: 'overview',   label: 'Overview',    icon: 'layout-dashboard', ready: true },
   { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
   { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
+  { id: 'inbox',      label: 'Inbox',       icon: 'inbox',            ready: true },
   { id: 'lpbook',     label: 'LP Book',     icon: 'landmark',         ready: true },
   { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: true },
   { id: 'compose',    label: 'Compose',     icon: 'mail-plus',        ready: true },

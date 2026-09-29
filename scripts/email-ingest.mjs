@@ -1,23 +1,22 @@
 /**
- * scripts/email-ingest.mjs — the email-reply pipeline, run on GitHub Actions on a
- * schedule (~every 15 min).
+ * scripts/email-ingest.mjs — the inbound email reader (Phase 12), run on GitHub Actions
+ * on a schedule (~every 5 min) or on demand.
  *
- * Reads NEW client replies from a dedicated IMAP inbox, analyses each with Bedrock
- * (sentiment, interest signal, questions asked, a summary and a DRAFT reply), and POSTs
- * them to the Worker (/api/replies/ingest, shared INGEST_SECRET), which matches each to
- * a contact by sender email and stores it in D1.
+ * Connects to the dedicated catcher inbox over IMAP, fetches UNSEEN messages, parses each
+ * (from, subject, plain-text body, date), and POSTs the RAW email to the Worker
+ * (/api/replies/ingest, shared INGEST_SECRET). The Worker does the AI classification and all
+ * the CRM updates — no secrets and no AI run here. A message is marked \\Seen ONLY after a
+ * successful POST, so it is never processed twice; on any error it is left UNSEEN for the next
+ * run. Auto-forwards (envelope from = the catcher) are re-attributed to the ORIGINAL sender
+ * parsed from the forwarded headers, so the reply lands on the real investor.
  *
- * TEST MODE: until IMAP credentials are set, it reads data/replies.sample.json instead of
- * a live inbox, so the whole pipeline is demonstrable now and goes live the moment the
- * inbox is connected. If BEDROCK_API_KEY is unset, a clearly-labelled heuristic stands in
- * for the model so ingest → D1 → UI still works end-to-end.
+ * TEST MODE: with no IMAP credentials it POSTs data/replies.sample.json instead, so the whole
+ * pipeline is demonstrable now and goes live the moment the inbox is connected.
  *
- * Env: WORKER_URL, INGEST_SECRET, IMAP_HOST, IMAP_USER, IMAP_PASSWORD (optional
- *      IMAP_PORT=993, IMAP_MAILBOX=INBOX), BEDROCK_API_KEY, AWS_REGION, BEDROCK_MODEL_IDS.
+ * Env: WORKER_URL, INGEST_SECRET, IMAP_HOST, IMAP_USER, IMAP_PASSWORD (optional IMAP_PORT=993,
+ *      IMAP_MAILBOX=INBOX).
  */
 import { readFile } from 'node:fs/promises';
-import { callBedrock, bedrockConfigured } from './_bedrock.mjs';
-import { REPLY_PROMPT, parseReply, heuristicReply } from '../functions/api/_ai.mjs';
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/+$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -26,23 +25,42 @@ const IMAP_USER = process.env.IMAP_USER || '';
 const IMAP_PASSWORD = process.env.IMAP_PASSWORD || '';
 const imapReady = !!(IMAP_HOST && IMAP_USER && IMAP_PASSWORD);
 
-/** Pull raw replies — from the live IMAP inbox, or (TEST mode) from the sample file. */
-async function readInbox() {
-  if (!imapReady) {
-    console.log('TEST mode — no IMAP credentials; reading data/replies.sample.json');
-    const raw = JSON.parse(await readFile(new URL('../data/replies.sample.json', import.meta.url), 'utf8'));
-    const list = Array.isArray(raw) ? raw : (raw.replies || []);
-    return list.map((r) => ({
-      fromEmail: (r.fromEmail || r.from || '').toLowerCase(),
-      fromName: r.fromName || '',
-      subject: r.subject || '',
-      receivedAt: r.receivedAt || new Date().toISOString().slice(0, 10),
-      body: r.body || r.text || '',
-      messageId: r.messageId || null,
-    }));
-  }
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 
-  console.log(`LIVE mode — reading UNSEEN mail from ${IMAP_USER}@${IMAP_HOST}`);
+/** POST one raw email to the ingest endpoint; throws on a non-2xx so the caller leaves it UNSEEN. */
+async function postEmails(emails) {
+  const rr = await fetch(`${WORKER}/api/replies/ingest`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SECRET}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ emails }),
+  });
+  if (!rr.ok) throw new Error(`HTTP ${rr.status} ${(await rr.text()).slice(0, 200)}`);
+  return rr.json();
+}
+
+/**
+ * Work out the REAL sender. Normally the envelope From. But when the catcher auto-forwards a
+ * message to itself, the envelope From is the catcher — so dig the original sender out of the
+ * forwarded header block ("From: Name <email>"), then a Reply-To, then give up to the envelope.
+ */
+function originalSender(parsed, catcher) {
+  const cat = String(catcher || '').toLowerCase();
+  const env = parsed.from && parsed.from.value && parsed.from.value[0];
+  const envEmail = (env && env.address || '').toLowerCase();
+  if (envEmail && envEmail !== cat) return { email: envEmail, name: (env && env.name) || '' };
+
+  const text = String(parsed.text || parsed.html || '');
+  const m = text.match(/From:\s*"?([^"<\n]+?)"?\s*<?([\w.+-]+@[\w-]+\.[\w.-]+)>?/i);
+  if (m && m[2].toLowerCase() !== cat) return { email: m[2].toLowerCase(), name: (m[1] || '').trim() };
+
+  const rt = parsed.replyTo && parsed.replyTo.value && parsed.replyTo.value[0];
+  if (rt && rt.address && rt.address.toLowerCase() !== cat) return { email: rt.address.toLowerCase(), name: rt.name || '' };
+
+  return { email: envEmail, name: (env && env.name) || '' };
+}
+
+async function runLive() {
+  console.log(`LIVE — reading UNSEEN mail from ${IMAP_USER}@${IMAP_HOST}`);
   const { ImapFlow } = await import('imapflow');
   const { simpleParser } = await import('mailparser');
   const client = new ImapFlow({
@@ -50,62 +68,58 @@ async function readInbox() {
     auth: { user: IMAP_USER, pass: IMAP_PASSWORD }, logger: false,
   });
   await client.connect();
-  const out = [];
   const lock = await client.getMailboxLock(process.env.IMAP_MAILBOX || 'INBOX');
+  let processed = 0; let failed = 0;
   try {
-    for await (const msg of client.fetch({ seen: false }, { source: true, uid: true })) {
-      const parsed = await simpleParser(msg.source);
-      const from = (parsed.from && parsed.from.value && parsed.from.value[0]) || {};
-      out.push({
-        fromEmail: (from.address || '').toLowerCase(),
-        fromName: from.name || '',
-        subject: parsed.subject || '',
-        receivedAt: (parsed.date || new Date()).toISOString(),
-        body: (parsed.text || parsed.html || '').toString().slice(0, 8000),
-        messageId: parsed.messageId || String(msg.uid),
-      });
-      await client.messageFlagsAdd({ uid: msg.uid }, ['\\Seen'], { uid: true });
+    const uids = await client.search({ seen: false }, { uid: true });
+    console.log(`found ${uids.length} unseen message(s)`);
+    for (const uid of uids) {
+      try {
+        const msg = await client.fetchOne(uid, { source: true }, { uid: true });
+        const parsed = await simpleParser(msg.source);
+        const sender = originalSender(parsed, IMAP_USER);
+        if (!sender.email || !EMAIL_RE.test(sender.email)) throw new Error('no usable sender address');
+        const email = {
+          fromEmail: sender.email,
+          fromName: sender.name || '',
+          subject: (parsed.subject || '').replace(/^\s*(fwd?|re):\s*/i, '').trim() || (parsed.subject || ''),
+          body: String(parsed.text || parsed.html || '').slice(0, 8000),
+          receivedAt: (parsed.date || new Date()).toISOString(),
+          messageId: parsed.messageId || `uid-${uid}`,
+        };
+        await postEmails([email]);                                       // AI + CRM update run server-side
+        await client.messageFlagsAdd({ uid }, ['\\Seen'], { uid: true }); // mark Seen ONLY on success → idempotent
+        processed += 1;
+      } catch (e) {
+        console.error(`uid ${uid} failed (left UNSEEN for retry): ${e.message}`);
+        failed += 1;                                                     // do NOT mark Seen
+      }
     }
   } finally {
     lock.release();
     await client.logout();
   }
-  return out;
+  console.log(`done — processed ${processed}, failed ${failed}`);
 }
 
-/** Analyse one reply — Bedrock when configured, else the labelled heuristic. */
-async function analyse(reply) {
-  if (bedrockConfigured()) {
-    try {
-      const { system, user, maxTokens } = REPLY_PROMPT(reply);
-      const { text, model } = await callBedrock(system, user, { maxTokens });
-      return { ...reply, ...parseReply(text), model };
-    } catch (e) {
-      console.error(`analysis failed for ${reply.fromEmail}: ${e.message} — using heuristic`);
-      return { ...reply, ...heuristicReply(reply) };
-    }
-  }
-  return { ...reply, ...heuristicReply(reply) };
+async function runTest() {
+  console.log('TEST mode — no IMAP credentials; POSTing data/replies.sample.json as raw emails');
+  const raw = JSON.parse(await readFile(new URL('../data/replies.sample.json', import.meta.url), 'utf8'));
+  const list = Array.isArray(raw) ? raw : (raw.replies || []);
+  const emails = list.map((r) => ({
+    fromEmail: (r.fromEmail || r.from || '').toLowerCase(),
+    fromName: r.fromName || '',
+    subject: r.subject || '',
+    body: r.body || r.text || '',
+    receivedAt: r.receivedAt || new Date().toISOString().slice(0, 10),
+    messageId: r.messageId || null,
+  }));
+  console.log('ingested:', JSON.stringify(await postEmails(emails)));   // endpoint is idempotent by messageId
 }
 
 async function main() {
   if (!WORKER || !SECRET) throw new Error('WORKER_URL and INGEST_SECRET are required');
-  if (!bedrockConfigured()) console.log('note: BEDROCK_API_KEY unset — using the labelled test heuristic for analysis');
-
-  const inbox = await readInbox();
-  console.log(`read ${inbox.length} reply(ies)`);
-  if (!inbox.length) { console.log('nothing to ingest'); return; }
-
-  const analysed = [];
-  for (const r of inbox) analysed.push(await analyse(r));   // sequential: gentle on Bedrock
-
-  const rr = await fetch(`${WORKER}/api/replies/ingest`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${SECRET}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ replies: analysed }),
-  });
-  if (!rr.ok) throw new Error(`ingest post failed: HTTP ${rr.status} ${(await rr.text()).slice(0, 200)}`);
-  console.log('ingested:', JSON.stringify(await rr.json()));
+  if (imapReady) await runLive(); else await runTest();
 }
 
 main().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });

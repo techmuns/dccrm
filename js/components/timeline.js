@@ -34,7 +34,7 @@ const KIND = {
 const ACT_ICON = {
   Note: 'sticky-note', Call: 'phone', Email: 'send', Meeting: 'users', WhatsApp: 'message-circle',
   'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', Other: 'circle-dot',
-  'Top-up': 'copy-plus', LP: 'landmark',
+  'Top-up': 'copy-plus', LP: 'landmark', 'Email in': 'mail',
 };
 
 /* filter chips → which kinds each one keeps (null = everything). "Pipeline" covers every
@@ -55,6 +55,7 @@ function kindForActivity(type) {
   if (type === 'Status') return 'status';
   if (type === 'Top-up') return 'topup';
   if (type === 'LP') return 'lp';
+  if (type === 'Email in') return 'email-in';   // an inbound investor email (Phase 12)
   if (type === 'Email') return 'email-out';   // a manually-logged email is an outbound touch
   return 'note';                              // Note · Call · Meeting · WhatsApp · Other
 }
