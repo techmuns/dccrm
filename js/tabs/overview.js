@@ -14,6 +14,7 @@ import { setQuery } from '../store.js';
 import { createUpdatePanel } from '../ai/updatebox.js';
 import { createAskPanel } from '../ai/askbox.js';
 import { createPrioritiesPanel } from '../ai/priorities.js';
+import { createNeedsPanel } from '../ai/needs.js';
 
 /** One chart card: a card, a chart that fills the space, and a legend under it. */
 function chartCard({ title, subtitle, iconName, accent, chartClass = '' }) {
@@ -86,7 +87,7 @@ export function render(container) {
     }),
     active: statTile({
       label: 'In active conversation',
-      hint: 'People at Network, Qualified, In Diligence, Committed or Hot.',
+      hint: 'People at Engaged, Diligence, Committed or Onboarding.',
       iconName: 'messages-square', accent: PALETTE[1],
     }),
     funded: statTile({
@@ -151,8 +152,9 @@ export function render(container) {
   ]);
   const aiTop = h('div', { class: 'grid grid-cols-1 lg:grid-cols-2 gap-4' }, [updatePanel.el, askCard]);
   const priorities = createPrioritiesPanel();
+  const needs = createNeedsPanel();
 
-  container.append(filterBar, aiTop, tileRow, grid, priorities.el);
+  container.append(filterBar, aiTop, tileRow, grid, priorities.el, needs.el);
   refreshIcons(container);
 
   const widgets = [funnel, types, countries, sources];
@@ -192,6 +194,7 @@ export function render(container) {
   function update(state) {
     showFilterBar(state);
     priorities.update(state);
+    needs.update(state);
     aiTop.classList.toggle('hidden', state.mode === 'preview');   // AI needs the live database
 
     if (state.status === 'loading') return setAll('loading');

@@ -389,7 +389,9 @@ export function render(container) {
     if (!ids.length) return;
     const res = await store.bulkAction({ ...payload, ids });
     if (!res.ok) { toast(res.error || 'Bulk action failed.', 'error'); return; }
-    toast(`${label} — ${formatNumber(res.affected || ids.length)} ${res.affected === 1 ? 'contact' : 'contacts'}.`, 'good');
+    // A gated bulk stage-move may move only some rows; res.message explains any that were skipped.
+    if (res.message) toast(res.message, res.blocked ? 'warn' : 'good');
+    else toast(`${label} — ${formatNumber(res.affected || ids.length)} ${res.affected === 1 ? 'contact' : 'contacts'}.`, 'good');
     table.clearSelection();
   }
 

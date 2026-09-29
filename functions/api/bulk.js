@@ -3,9 +3,13 @@
  * Body: { action: 'stage'|'owner'|'tag'|'delete', ids: number[], value?: string, tagId?, name? }
  * Returns { ok, affected }.
  */
-import { json, fail, noDb, now, readJson, ensureSchema, currentUser, TAG_PALETTE } from './_lib.js';
+import { json, fail, noDb, now, readJson, ensureSchema, currentUser, TAG_PALETTE, gateViolation } from './_lib.js';
 
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+
+/* Stages that gate on entry (Phase 10). A bulk move into one only touches the rows that
+   already satisfy the gate; the rest are reported as blocked, never silently moved. */
+const GATED_STAGES = new Set(['Diligence', 'Committed']);
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return noDb();
@@ -23,11 +27,32 @@ export async function onRequestPost({ request, env }) {
     if (action === 'stage' || action === 'owner') {
       const col = action === 'stage' ? 'stage' : 'relationshipOwner';
       const value = String(body.value || '').trim() || null;
-      const stmts = chunk(ids, 100).map((group) => env.DB.prepare(
+
+      // A bulk move INTO a gated stage only affects rows that already meet the gate.
+      let targetIds = ids;
+      let blocked = 0;
+      if (action === 'stage' && value && GATED_STAGES.has(value)) {
+        const rows = [];
+        for (const group of chunk(ids, 100)) {
+          const res = await env.DB.prepare(
+            `SELECT id, stage, vehicle, targetTicket, committedAmount, fundingDate FROM contacts WHERE id IN (${group.map(() => '?').join(',')})`,
+          ).bind(...group).all();
+          rows.push(...(res.results || []));
+        }
+        targetIds = rows.filter((r) => gateViolation(r, { stage: value }) === null).map((r) => r.id);
+        blocked = ids.length - targetIds.length;
+        if (!targetIds.length) {
+          const need = value === 'Diligence' ? 'Vehicle + Target ticket' : 'Committed amount + expected funding date';
+          return json({ ok: true, affected: 0, blocked, message: `None moved — each needs ${need} first. Open a profile to fill them in.` });
+        }
+      }
+
+      const stmts = chunk(targetIds, 100).map((group) => env.DB.prepare(
         `UPDATE contacts SET ${col} = ?, updatedAt = ?, updatedBy = ? WHERE id IN (${group.map(() => '?').join(',')})`,
       ).bind(value, ts, who, ...group));
       await env.DB.batch(stmts);
-      return json({ ok: true, affected: ids.length });
+      const msg = blocked ? `${targetIds.length} moved · ${blocked} skipped (need the deal fields first).` : undefined;
+      return json({ ok: true, affected: targetIds.length, blocked, message: msg });
     }
 
     if (action === 'tag') {
