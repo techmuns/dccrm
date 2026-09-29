@@ -13,12 +13,14 @@ import { SEED_CONTACTS } from './_seed.js';
 export const WRITABLE = [
   'fullName', 'entityType', 'role', 'organisation', 'designation', 'email', 'phone', 'altPhone',
   'whatsapp', 'whatsappOptIn', 'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
-  'closedStatus', 'revisitDate', 'targetTicket', 'committedAmount', 'fundingDate', 'tier', 'priority', 'referredBy',
+  'closedStatus', 'revisitDate', 'targetTicket', 'committedAmount', 'fundingDate',
+  'isTopUp', 'linkedLp', 'reportingStatus', 'topUpPotential', 'redemptionRisk',
+  'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate', 'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
 
 /* Fields whose value is a small integer flag rather than free text (special-cased on write). */
-const BOOL_FIELDS = new Set(['dormant']);
+const BOOL_FIELDS = new Set(['dormant', 'isTopUp']);
 
 export const HEADERS = {
   fullName: 'Full Name', entityType: 'Entity Type', role: 'Role', organisation: 'Organisation Name',
@@ -27,6 +29,8 @@ export const HEADERS = {
   vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant', wakeDate: 'Wake Date',
   closedStatus: 'Closed Status', revisitDate: 'Revisit Date',
   targetTicket: 'Target Ticket', committedAmount: 'Committed Amount', fundingDate: 'Expected Funding Date',
+  isTopUp: 'Top-up', linkedLp: 'Linked LP', reportingStatus: 'Reporting Status',
+  topUpPotential: 'Top-up Potential', redemptionRisk: 'Redemption Risk',
   tier: 'Tier', priority: 'Priority', referredBy: 'Referred By',
   lastContact: 'Last Contact', nextAction: 'Next Action', nextActionDate: 'Next Action Date',
   relationshipOwner: 'Relationship Owner', source: 'Source / Channel', signal: 'Signal / Tags',
@@ -171,6 +175,12 @@ const COLUMN_MIGRATIONS = [
   ['contacts', 'targetTicket', 'TEXT'],
   ['contacts', 'committedAmount', 'TEXT'],
   ['contacts', 'fundingDate', 'TEXT'],
+  // Phase-11: top-ups + LP book.
+  ['contacts', 'isTopUp', 'INTEGER'],
+  ['contacts', 'linkedLp', 'INTEGER'],
+  ['contacts', 'reportingStatus', 'TEXT'],
+  ['contacts', 'topUpPotential', 'TEXT'],
+  ['contacts', 'redemptionRisk', 'TEXT'],
 ];
 
 /* Dhamma's FINALISED pipeline (Phase 9). The single source of truth the AI layer validates

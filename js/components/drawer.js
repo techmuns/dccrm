@@ -13,8 +13,9 @@ import {
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { formatDate, daysFromToday, escapeHtml, tidy } from '../util.js';
-import { isClosed, needsAttentionReasons, advanceChecklist } from '../data.js';
+import { isClosed, needsAttentionReasons, advanceChecklist, topUpsOf, lpOf, parseAmount, formatAmount } from '../data.js';
 import { openTimeline } from './timeline.js';
+import { openTopUpDialog } from './topupdialog.js';
 import { CADENCES, applyCadence, addReminder, dueInDays } from '../cadences.js';
 import * as store from '../store.js';
 
@@ -180,9 +181,12 @@ const closedChip = (c) => h('span', { class: 'cat-chip', style: '--c:#c0392b' },
  *  soft "Needs" flag (Owner / Next step) when an active record is missing them. */
 function headChips(contact) {
   const needs = needsAttentionReasons(contact);
+  const lp = contact.isTopUp ? lpOf(store.getState().contacts || [], contact) : null;
   return h('div', { class: 'drawer-chips' }, [
     chip('entityType', contact.entityType),
     isClosed(contact) ? closedChip(contact) : chip('stage', contact.stage),
+    contact.isTopUp ? h('span', { class: 'topup-chip', title: 'A linked top-up commitment' },
+      [icon('copy-plus', 'size-3'), h('span', { text: lp ? `Top-up of ${lp.fullName || 'LP'}` : 'Top-up' })]) : null,
     (!isClosed(contact) && contact.heat) ? chip('heat', contact.heat) : null,
     contact.dormant ? h('span', { class: 'cat-chip', style: '--c:#8f8f96' }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: 'Dormant' })]) : null,
     needs.length ? h('span', { class: 'needs-chip', title: `Missing: ${needs.join(', ')}` },
@@ -321,6 +325,51 @@ function pipelinePanel(contact) {
   return wrap;
 }
 
+/**
+ * Phase 11 — the LP-book section in the drawer. For an Invested LP: total invested (base +
+ * invested top-ups), an investment count, its list of top-ups, and an "Add top-up" action.
+ * For a top-up record: a link back to the LP it belongs to. Null when neither applies.
+ */
+function lpSection(contact) {
+  const all = store.getState().contacts || [];
+  if (contact.isTopUp) {
+    const lp = lpOf(all, contact);
+    return section('Top-up', 'copy-plus', [
+      h('div', { class: 'drawer-field' }, [
+        h('div', { class: 'k', text: 'Top-up of' }),
+        h('div', { class: 'v' }, [
+          lp ? h('button', { class: 'lp-link', type: 'button', onClick: () => openDrawer(lp) }, [h('span', { text: lp.fullName || `LP #${contact.linkedLp}` })])
+            : h('span', { text: `LP #${contact.linkedLp || '—'}` }),
+        ]),
+      ]),
+    ]);
+  }
+  if (contact.stage !== 'Invested' || isClosed(contact)) return null;
+  const topUps = topUpsOf(all, contact.id);
+  const investedTopUps = topUps.filter((c) => c.stage === 'Invested');
+  const total = [contact, ...investedTopUps].reduce((sum, c) => sum + parseAmount(c.committedAmount), 0);
+  const addBtn = store.isLive()
+    ? h('button', { class: 'btn btn-quiet btn-sm lp-add', type: 'button', onClick: () => openTopUpDialog(contact, { onCreated: () => renderView(contact) }) },
+      [icon('copy-plus', 'size-3.5'), h('span', { text: 'Add top-up' })])
+    : null;
+  const list = topUps.length
+    ? h('div', { class: 'lp-topups' }, topUps.map((t) => h('button', { class: 'lp-topup', type: 'button', title: 'Open top-up', onClick: () => openDrawer(t) }, [
+      h('span', { class: 'lp-topup-amt', text: t.committedAmount || '—' }),
+      chip('stage', t.stage),
+      t.stage === 'Invested' ? h('span', { class: 'lp-topup-tag', text: 'funded' }) : null,
+    ])))
+    : h('p', { class: 't-caption', text: 'No top-ups yet.' });
+  return h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon('landmark', 'size-3.5'), 'LP book']),
+    h('div', { class: 'lp-drawer-sum' }, [
+      h('div', { class: 'lp-sum-item' }, [h('span', { class: 'lp-sum-v', text: formatAmount(total) }), h('span', { class: 'lp-sum-l', text: 'Total invested' })]),
+      h('div', { class: 'lp-sum-item' }, [h('span', { class: 'lp-sum-v', text: String(1 + investedTopUps.length) }), h('span', { class: 'lp-sum-l', text: 'Investments' })]),
+    ]),
+    list,
+    addBtn,
+  ].filter(Boolean));
+}
+
 function renderView(contact, opts = {}) {
   refs.head.replaceChildren(...[
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
@@ -388,6 +437,7 @@ function renderView(contact, opts = {}) {
       field('Tier', contact.tier),
       field('Priority', contact.priority),
     ]) : null,
+    store.isLive() ? lpSection(contact) : null,   // Phase 11 — LP book panel / top-up link
     section('Follow-up', 'calendar-check', [
       field('Last contact', contact.lastContact ? formatDate(contact.lastContactAt) : ''),
       field('Next action', contact.nextAction),

@@ -228,6 +228,24 @@ export async function updateContact(id, patch, { optimistic = true, silent = fal
   }
 }
 
+/**
+ * Create a top-up (Phase 11): a NEW Committed record linked to an existing Invested LP.
+ * The server copies the person's identity, enforces the Committed gate, and logs both
+ * timelines; we then reload so the new record + logs appear everywhere.
+ */
+export async function createTopUp(lpId, terms = {}) {
+  if (!isLive()) return PREVIEW;
+  try {
+    const d = await api(`/api/contacts/${lpId}/topup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-change-source': 'Manual' },
+      body: JSON.stringify(terms),
+    });
+    await reload();
+    return { ok: true, ...d };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
 export async function deleteContact(id, { silent = false } = {}) {
   if (!isLive()) return PREVIEW;
   try {

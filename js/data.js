@@ -61,6 +61,79 @@ export function advanceChecklist(contact) {
   return { next, hard: !!gate, items };
 }
 
+/* ---------- Phase 11: top-ups + the LP book ---------- */
+
+/** A record that is a top-up (an additional linked commitment), not the base investment. */
+export const isTopUpRecord = (c) => !!(c && c.isTopUp);
+
+/**
+ * Best-effort numeric value of a free-text amount ("₹5 Cr", "$2M", "50,00,000", "5 lakh").
+ * Understands Indian (Cr / L / lakh) and Western (K / M / B) units. Unknown → 0.
+ */
+export function parseAmount(value) {
+  const s = String(value == null ? '' : value).toLowerCase().replace(/[,₹$€£\s]/g, '');
+  const m = s.match(/^(-?[\d.]+)(cr|crore|l|lakh|lac|k|m|mn|b|bn)?/);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return 0;
+  const mult = { cr: 1e7, crore: 1e7, l: 1e5, lakh: 1e5, lac: 1e5, k: 1e3, m: 1e6, mn: 1e6, b: 1e9, bn: 1e9 }[m[2] || ''] || 1;
+  return n * mult;
+}
+
+/** Compact money label from a number: currency-agnostic Cr / L / K grouping. */
+export function formatAmount(n) {
+  if (!n) return '—';
+  if (n >= 1e7) return `${+(n / 1e7).toFixed(2)} Cr`;
+  if (n >= 1e5) return `${+(n / 1e5).toFixed(2)} L`;
+  if (n >= 1e3) return `${+(n / 1e3).toFixed(1)} K`;
+  return String(Math.round(n));
+}
+
+/**
+ * The LP book: one row per LP — a person with a base Invested record (not itself a top-up).
+ * Aggregates the LP's own Invested record plus any top-up records that also reached Invested,
+ * so the total and count reflect every funded commitment. Separate from the pipeline funnel.
+ */
+export function lpBook(contacts) {
+  const list = Array.isArray(contacts) ? contacts : [];
+  const topUpsByLp = new Map();
+  for (const c of list) {
+    if (c.isTopUp && c.linkedLp != null) {
+      if (!topUpsByLp.has(c.linkedLp)) topUpsByLp.set(c.linkedLp, []);
+      topUpsByLp.get(c.linkedLp).push(c);
+    }
+  }
+  const roots = list.filter((c) => c.stage === STAGE_INVESTED && !c.isTopUp && !isClosed(c));
+  const rows = roots.map((lp) => {
+    const topUps = topUpsByLp.get(lp.id) || [];
+    const investedTopUps = topUps.filter((c) => c.stage === STAGE_INVESTED);
+    const investments = [lp, ...investedTopUps];
+    const totalInvested = investments.reduce((sum, c) => sum + parseAmount(c.committedAmount), 0);
+    const times = investments.map((c) => Date.parse(c.updatedAt || '')).filter((t) => !Number.isNaN(t));
+    return {
+      lp,
+      investments,
+      topUps,                                    // all top-ups (incl. in-progress), for context
+      count: investments.length,                 // funded commitments (base + invested top-ups)
+      openTopUps: topUps.filter((c) => c.stage !== STAGE_INVESTED).length,
+      totalInvested,
+      reportingStatus: tidy(lp.reportingStatus) || 'Due',
+      topUpPotential: tidy(lp.topUpPotential),
+      redemptionRisk: tidy(lp.redemptionRisk),
+      lastActivityAt: times.length ? new Date(Math.max(...times)) : null,
+    };
+  });
+  rows.sort((a, b) => b.totalInvested - a.totalInvested
+    || (b.lastActivityAt?.getTime() || 0) - (a.lastActivityAt?.getTime() || 0));
+  return rows;
+}
+
+/** Top-up records (any stage) linked to a given LP id. */
+export const topUpsOf = (contacts, lpId) => (contacts || []).filter((c) => c.isTopUp && String(c.linkedLp) === String(lpId));
+/** The base LP record a top-up points at (or null). */
+export const lpOf = (contacts, contact) => (contact && contact.linkedLp != null
+  ? (contacts || []).find((c) => c.id === contact.linkedLp) || null : null);
+
 /** Canonical spelling for a stage, matched case- and space-insensitively. */
 function canonicalStage(value) {
   const raw = tidy(value);
@@ -149,6 +222,9 @@ export function normalizeContact(row) {
   contact.heat = canonicalHeat(contact.heat);
   contact.dormant = row.dormant === 1 || row.dormant === true || /^(1|yes|true|y)$/i.test(String(row.dormant ?? ''));
   contact.closedStatus = tidy(contact.closedStatus).toLowerCase();
+  // Phase 11 — top-up flag + link, and the LP-book fields (kept as written).
+  contact.isTopUp = row.isTopUp === 1 || row.isTopUp === true || /^(1|yes|true|y)$/i.test(String(row.isTopUp ?? ''));
+  contact.linkedLp = (row.linkedLp != null && row.linkedLp !== '') ? Number(row.linkedLp) : null;
   contact.lastContactAt = parseDate(contact.lastContact);
   contact.nextActionAt = parseDate(contact.nextActionDate);
   contact.wakeDateAt = parseDate(contact.wakeDate);

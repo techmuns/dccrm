@@ -59,6 +59,31 @@ async function logChanges(env, request, id, before, updated) {
   } catch { /* best-effort; the contact update already succeeded */ }
 }
 
+/**
+ * Phase 11 — when a record reaches Invested, make sure the person is on the LP book.
+ * LPs are derived from Invested contacts, so a base record becoming Invested simply IS a new
+ * LP: we log it and default its reporting status. A top-up reaching Invested adds to its linked
+ * LP's total, so we log on both records. Best-effort — the stage change already succeeded.
+ */
+async function onReachedInvested(env, request, id, updated) {
+  const ts = now();
+  const who = currentUser(request);
+  const src = (request.headers.get('x-change-source') || 'Manual').trim().slice(0, 60) || 'Manual';
+  const act = (cid, summary) => env.DB.prepare(
+    'INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).bind(cid, 'LP', summary, ts, who, src, ts);
+  const stmts = [];
+  if (Number(updated.isTopUp) === 1 && updated.linkedLp) {
+    stmts.push(act(id, 'Top-up reached Invested — added to the LP total'));
+    const root = await env.DB.prepare('SELECT id FROM contacts WHERE id = ?').bind(updated.linkedLp).first();
+    if (root) stmts.push(act(root.id, `Top-up (#${id}) reached Invested — total updated`));
+  } else {
+    stmts.push(act(id, 'Reached Invested — added to the LP book'));
+    stmts.push(env.DB.prepare("UPDATE contacts SET reportingStatus = 'Due' WHERE id = ? AND (reportingStatus IS NULL OR reportingStatus = '')").bind(id));
+  }
+  try { await env.DB.batch(stmts); } catch { /* best-effort */ }
+}
+
 export async function onRequestGet({ params, env }) {
   if (!env.DB) return noDb();
   const id = parseId(params);
@@ -107,6 +132,10 @@ export async function onRequestPut({ params, request, env }) {
     const updated = await env.DB.prepare(`UPDATE contacts SET ${setSql} WHERE id = ? RETURNING *`).bind(...binds).first();
     if (!updated) return fail('Contact not found.', 404);
     if (before) await logChanges(env, request, id, before, updated);
+    // Phase 11 — reaching Invested puts the person on the LP book (and rolls a top-up into its LP).
+    if (before && String(before.stage) !== 'Invested' && String(updated.stage) === 'Invested') {
+      await onReachedInvested(env, request, id, updated);
+    }
     return json({ contact: updated });
   } catch (err) {
     if (/UNIQUE/i.test(err.message)) return fail('Another contact already uses that email.', 409);
