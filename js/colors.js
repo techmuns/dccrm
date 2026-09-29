@@ -11,12 +11,12 @@
  * There are eight hues and no ninth. Categories past slot eight take the neutral
  * slate, which reads honestly as "the tail" rather than as a made-up colour.
  */
-import { PALETTE, NEUTRAL, STAGE_DORMANT, STAGE_COLORS } from './config.js';
+import { PALETTE, NEUTRAL, STAGE_COLORS, HEAT_COLORS } from './config.js';
 
 const dimensions = new Map(); // dimension name -> Map(category -> hex)
 
 /* Dimensions with a fixed, meaningful colour per value (not assigned by rank). */
-const FIXED = { stage: STAGE_COLORS };
+const FIXED = { stage: STAGE_COLORS, heat: HEAT_COLORS };
 
 /** Assign hues to a dimension's categories, in the order given. Called once per load. */
 export function registerDimension(dimension, orderedNames) {
@@ -24,11 +24,9 @@ export function registerDimension(dimension, orderedNames) {
   let slot = 0;
   for (const name of orderedNames) {
     if (!name || map.has(name)) continue;
-    // A fixed-colour dimension (e.g. stage) keeps its meaningful hue, not a rank slot.
+    // A fixed-colour dimension (e.g. stage, heat) keeps its meaningful hue, not a rank slot.
     const fixed = FIXED[dimension]?.[name];
     if (fixed) { map.set(name, fixed); continue; }
-    // Dormant sits outside the pipeline, so it reads as parked rather than as a stage.
-    if (name === STAGE_DORMANT) { map.set(name, NEUTRAL); continue; }
     map.set(name, slot < PALETTE.length ? PALETTE[slot] : NEUTRAL);
     slot += 1;
   }
@@ -48,14 +46,16 @@ export function ensureCategory(dimension, name) {
   if (map.has(name)) return;
   const fixed = FIXED[dimension]?.[name];
   if (fixed) { map.set(name, fixed); return; }
-  if (name === STAGE_DORMANT) { map.set(name, NEUTRAL); return; }
   const used = [...map.values()].filter((c) => PALETTE.includes(c)).length;
   map.set(name, used < PALETTE.length ? PALETTE[used] : NEUTRAL);
 }
 
 export function colorOf(dimension, name) {
   const map = dimensions.get(dimension);
-  return (map && map.get(name)) || NEUTRAL;
+  if (map && map.has(name)) return map.get(name);
+  // A fixed-colour dimension (stage / heat) always resolves to its meaning, even for a
+  // value not yet present in the loaded data (e.g. a Heat the seed didn't happen to carry).
+  return FIXED[dimension]?.[name] || NEUTRAL;
 }
 
 /** True when this category got a real hue rather than the neutral fallback. */

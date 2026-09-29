@@ -5,7 +5,7 @@
  * from; it reads the store's snapshot and draws. Written as a normal tab module so
  * Contacts, Follow-ups, Campaigns and AI Insights can follow the same shape.
  */
-import { PALETTE, STAGE_DORMANT } from '../config.js';
+import { PALETTE } from '../config.js';
 import { card, statTile, legend, footnote, h, icon, refreshIcons } from '../ui.js';
 import { mountChart, funnelOption, donutOption, hbarOption, barOption } from '../charts.js';
 import { headlineNumbers, pipelineStages, series } from '../data.js';
@@ -90,8 +90,8 @@ export function render(container) {
       iconName: 'messages-square', accent: PALETTE[1],
     }),
     funded: statTile({
-      label: 'Funded investors',
-      hint: 'People at the Funded stage — money is in.',
+      label: 'Invested',
+      hint: 'People at the Invested stage — money received.',
       iconName: 'circle-check-big', accent: PALETTE[2],
     }),
     due: statTile({
@@ -214,7 +214,7 @@ export function render(container) {
     const numbers = headlineNumbers(rows);
     tiles.total.set(numbers.total, state.query ? 'Matching your search' : 'Everyone on the list');
     tiles.active.set(numbers.active, `${formatPercent(numbers.active, numbers.total)} of everyone`);
-    tiles.funded.set(numbers.funded, `${formatPercent(numbers.funded, numbers.total)} of everyone`);
+    tiles.funded.set(numbers.invested, `${formatPercent(numbers.invested, numbers.total)} of everyone`);
     tiles.due.set(
       numbers.dueThisWeek,
       numbers.overdue ? `${formatNumber(numbers.overdue)} more are already past due` : 'Nothing is past due',
@@ -228,10 +228,14 @@ export function render(container) {
     } else {
       funnel.draw(funnelOption(pipeline.stages), pipeline.stages, { valueLabel: 'People' });
       const outParts = [];
-      if (pipeline.hot) outParts.push(`${formatNumber(pipeline.hot)} Hot (priority)`);
       if (pipeline.dormant) outParts.push(`${formatNumber(pipeline.dormant)} Dormant (parked)`);
-      if (pipeline.otherTotal) outParts.push(`${formatNumber(pipeline.otherTotal)} in ${escapeHtml(pipeline.otherNames.join(', '))}`);
-      funnel.note(outParts.length ? `Outside the funnel: ${outParts.join(' · ')}.` : '');
+      if (pipeline.closed) {
+        const bits = [];
+        if (pipeline.passed) bits.push(`${formatNumber(pipeline.passed)} Passed`);
+        if (pipeline.disqualified) bits.push(`${formatNumber(pipeline.disqualified)} Disqualified`);
+        outParts.push(`${formatNumber(pipeline.closed)} Closed (${bits.join(' · ')})`);
+      }
+      funnel.note(outParts.length ? `Alongside the funnel: ${outParts.join(' · ')}.` : '');
     }
 
     /* investors by type */

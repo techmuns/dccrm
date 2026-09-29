@@ -8,23 +8,54 @@ const parseId = (params) => {
   return Number.isInteger(id) && id > 0 ? id : null;
 };
 
+/* Pipeline fields whose changes are recorded on the contact timeline. */
+const TRACKED = ['stage', 'heat', 'dormant', 'closedStatus'];
+
 /**
- * Record a "Stage change" activity when an edit genuinely moved the contact between stages.
- * Written to the same activities table the drawer / grid / prompt box already read, so the move
- * shows on the contact timeline. Grounded: it fires only on a real change. The `x-change-source`
- * header (set by the store) says where the move came from — Grid edit / Prompt box / Manual.
- * Called only when the payload touched `stage`, so `priorStage` is the real pre-edit value.
+ * Record timeline activities for a genuine pipeline change — Stage move, Heat change, Dormant
+ * on/off, or Close/Reopen — each as its own event. Written to the same activities table the
+ * drawer / grid / prompt box already read. Grounded: only real changes are logged. The
+ * `x-change-source` header (set by the store) says where the change came from.
  */
-async function logStageChange(env, request, id, priorStage, updated) {
-  const oldS = String(priorStage ?? '').trim();
-  const newS = String(updated?.stage ?? '').trim();
-  if (oldS === newS) return;                                   // same stage re-selected — no move
-  const source = (request.headers.get('x-change-source') || 'Manual').trim().slice(0, 60) || 'Manual';
+async function logChanges(env, request, id, before, updated) {
+  const src = (request.headers.get('x-change-source') || 'Manual').trim().slice(0, 60) || 'Manual';
+  const S = (v) => String(v ?? '').trim();
+  const wasClosed = !!S(before.closedStatus);
+  const nowClosed = !!S(updated.closedStatus);
+  const reopened = wasClosed && !nowClosed;
+  const events = [];
+
+  // Stage — skip the redundant move a Reopen implies (Reopen logs its own event below).
+  if (S(before.stage) !== S(updated.stage) && !reopened) {
+    events.push(['Stage change', `Stage: ${S(before.stage) || '—'} → ${S(updated.stage) || '—'}`]);
+  }
+  // Heat
+  if (S(before.heat) !== S(updated.heat)) {
+    events.push(['Heat change', `Heat: ${S(before.heat) || '—'} → ${S(updated.heat) || '—'}`]);
+  }
+  // Dormant on/off
+  const wasDorm = Number(before.dormant) === 1;
+  const nowDorm = Number(updated.dormant) === 1;
+  if (wasDorm !== nowDorm) {
+    events.push(['Dormant', nowDorm
+      ? (S(updated.wakeDate) ? `Marked dormant · wake ${S(updated.wakeDate)}` : 'Marked dormant')
+      : 'Dormant cleared']);
+  }
+  // Close / Reopen
+  if (!wasClosed && nowClosed) {
+    const label = S(updated.closedStatus) === 'disqualified' ? 'Disqualified' : 'Passed';
+    events.push(['Status', S(updated.revisitDate) ? `Closed — ${label} · revisit ${S(updated.revisitDate)}` : `Closed — ${label}`]);
+  } else if (reopened) {
+    events.push(['Status', `Reopened → ${S(updated.stage) || 'Target'}`]);
+  }
+
+  if (!events.length) return;
   const ts = now();
+  const who = currentUser(request);
   try {
-    await env.DB.prepare(
-      'INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(id, 'Stage change', `Stage: ${oldS || '—'} → ${newS || '—'}`, ts, currentUser(request), source, ts).run();
+    await env.DB.batch(events.map(([type, summary]) =>
+      env.DB.prepare('INSERT INTO activities (contactId, type, summary, occurredAt, createdBy, source, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, type, summary, ts, who, src, ts)));
   } catch { /* best-effort; the contact update already succeeded */ }
 }
 
@@ -57,13 +88,12 @@ export async function onRequestPut({ params, request, env }) {
   } catch (err) {
     return fail(err.message, 400);
   }
-  // Capture the prior stage before the write, so a genuine stage move can be recorded on the
-  // contact's timeline (below). Only needed when this edit actually touches the stage.
-  let priorStage = null;
-  if ('stage' in values) {
-    const before = await env.DB.prepare('SELECT stage FROM contacts WHERE id = ?').bind(id).first();
+  // Capture the prior pipeline fields before the write, so genuine changes can be recorded on
+  // the contact's timeline (below). Only needed when this edit actually touches one of them.
+  let before = null;
+  if (TRACKED.some((k) => k in values)) {
+    before = await env.DB.prepare('SELECT stage, heat, dormant, closedStatus, wakeDate, revisitDate FROM contacts WHERE id = ?').bind(id).first();
     if (!before) return fail('Contact not found.', 404);
-    priorStage = before.stage;
   }
   const cols = WRITABLE.filter((c) => c in values);
   const setSql = [...cols.map((c) => `${c} = ?`), 'updatedAt = ?', 'updatedBy = ?'].join(', ');
@@ -71,7 +101,7 @@ export async function onRequestPut({ params, request, env }) {
   try {
     const updated = await env.DB.prepare(`UPDATE contacts SET ${setSql} WHERE id = ? RETURNING *`).bind(...binds).first();
     if (!updated) return fail('Contact not found.', 404);
-    if ('stage' in values) await logStageChange(env, request, id, priorStage, updated);
+    if (before) await logChanges(env, request, id, before, updated);
     return json({ contact: updated });
   } catch (err) {
     if (/UNIQUE/i.test(err.message)) return fail('Another contact already uses that email.', 409);

@@ -19,43 +19,65 @@ export const PALETTE = [
 export const NEUTRAL = '#9a9aa0';   // everything past slot 8, and "Other" — platinum grey
 export const SURFACE = '#ffffff';   // card surface — also the gap colour between marks
 
-/* Dhamma's real fundraising pipeline, in funnel order. Hot and Dormant are real
-   statuses that sit OUTSIDE the funnel (a priority flag and a parked flag). */
+/* Dhamma's FINALISED pipeline. STAGE is a single value a record is in exactly one of.
+   Heat, Dormant and the Closed states are SEPARATE fields (below) — not stages. */
 export const STAGE_ORDER = [
-  'Cold',
-  'Network',
-  'Qualified',
-  'In Diligence',
+  'Target',
+  'Engaged',
+  'Diligence',
   'Committed',
-  'Funded',
+  'Onboarding',
+  'Invested',
 ];
-export const STAGE_HOT = 'Hot';         // out-of-pipeline priority
-export const STAGE_DORMANT = 'Dormant'; // out-of-pipeline parked
-export const STAGE_FUNDED = 'Funded';   // the "won" stage (money in)
-/* Every selectable stage, in display order: the funnel, then the two side statuses. */
-export const ALL_STAGES = [...STAGE_ORDER, STAGE_HOT, STAGE_DORMANT];
+/* Every selectable stage — the six, and only the six. */
+export const ALL_STAGES = [...STAGE_ORDER];
+export const STAGE_INVESTED = 'Invested';   // the "won" stage (money received)
+export const STAGE_COMMITTED = 'Committed';
 
-/* Stages that count as "actively working the relationship" (not Cold, Funded or parked). */
-export const ACTIVE_STAGES = ['Network', 'Qualified', 'In Diligence', 'Committed', 'Hot'];
+/* Stages that count as "actively working the relationship" (not fresh Targets, not won). */
+export const ACTIVE_STAGES = ['Engaged', 'Diligence', 'Committed', 'Onboarding'];
 
 /* Fixed stage colours — one meaning, one hue, everywhere (funnel, chips, grid, drawer).
-   Enterprise/muted: rose + platinum + jade with slate and amber for the middle. */
+   A cool-to-warm funnel deepening toward the jade "won". */
 export const STAGE_COLORS = {
-  Cold: '#aeaeaa',           // platinum grey
-  Network: '#6b7a99',        // slate
-  Qualified: '#c08a2e',      // amber
-  'In Diligence': '#4c6ea5', // slate blue
-  Committed: '#a83a5b',      // rose
-  Funded: '#2e8b74',         // jade
-  Hot: '#c24e70',            // bright rose
-  Dormant: '#8f8f96',        // muted grey (parked)
+  Target: '#aeaeaa',      // platinum grey — fresh
+  Engaged: '#6b7a99',     // slate
+  Diligence: '#4c6ea5',   // slate blue
+  Committed: '#a83a5b',   // rose — the key milestone
+  Onboarding: '#c08a2e',  // amber — in motion
+  Invested: '#2e8b74',    // jade — won
 };
+
+/* Each stage's "move on when" hint — shown as a small tooltip on the stage editors. */
+export const STAGE_HINTS = {
+  Target: 'Researched + owner assigned',
+  Engaged: 'Two-way exchange done; ticket & vehicle confirmed',
+  Diligence: 'Deck / DDQ / calls / references in progress',
+  Committed: 'Verbal yes with amount & timing',
+  Onboarding: 'Subscription docs & KYC underway',
+  Invested: 'Money received',
+};
+
+/* HEAT — a SEPARATE field (not a stage). Editable only on the earlier stages; hidden on
+   Onboarding and Invested. Changing Heat NEVER changes the Stage. */
+export const HEAT_VALUES = ['Hot', 'Warm', 'Cold'];
+export const HEAT_STAGES = ['Target', 'Engaged', 'Diligence', 'Committed'];   // where heat applies
+export const HEAT_COLORS = { Hot: '#c0392b', Warm: '#c08a2e', Cold: '#4c6ea5' };
+
+/* CLOSED states — SEPARATE from the six stages. A record can be Passed (they declined)
+   or Disqualified (we declined), each with a revisit date. Shown apart from the funnel. */
+export const CLOSED_STATUSES = [
+  { value: 'passed', label: 'Passed', desc: 'They declined' },
+  { value: 'disqualified', label: 'Disqualified', desc: 'We declined' },
+];
+export const CLOSED_LABELS = { passed: 'Passed', disqualified: 'Disqualified' };
 
 /* The normalised contact shape. Order matters for table views in later tabs. */
 export const FIELDS = [
   'fullName', 'entityType', 'role', 'organisation', 'designation',
   'email', 'phone', 'altPhone', 'whatsapp', 'whatsappOptIn',
-  'country', 'city', 'vehicle', 'stage', 'tier', 'priority', 'referredBy',
+  'country', 'city', 'vehicle', 'stage', 'heat', 'dormant', 'wakeDate',
+  'closedStatus', 'revisitDate', 'tier', 'priority', 'referredBy',
   'lastContact', 'nextAction', 'nextActionDate',
   'relationshipOwner', 'source', 'signal', 'notes', 'roughNotes',
 ];
@@ -77,7 +99,13 @@ export const HEADER_MAP = {
   primarycountry: 'country', country: 'country',
   primarycity: 'city', city: 'city',
   vehicle: 'vehicle', fund: 'vehicle', product: 'vehicle', strategy: 'vehicle',
-  stage: 'stage', status: 'stage', pipelinestage: 'stage',
+  stage: 'stage', pipelinestage: 'stage',
+  // Finalised model — Heat / Dormant / Closed are separate fields (Phase 9).
+  heat: 'heat', temperature: 'heat', heatlevel: 'heat',
+  dormant: 'dormant', isdormant: 'dormant', parked: 'dormant',
+  wakedate: 'wakeDate', wakeupdate: 'wakeDate', dormantuntil: 'wakeDate',
+  closedstatus: 'closedStatus', closed: 'closedStatus', closereason: 'closedStatus',
+  revisitdate: 'revisitDate', revisit: 'revisitDate',
   referredby: 'referredBy', referral: 'referredBy', referredbywhom: 'referredBy',
   lastcontact: 'lastContact', lastcontacted: 'lastContact', lastcontactdate: 'lastContact', lasttouch: 'lastContact',
   nextaction: 'nextAction', nextstep: 'nextAction',
@@ -98,7 +126,8 @@ export const HEADER_MAP = {
 export const FIELD_LABELS = {
   fullName: 'Full name', entityType: 'Entity type', role: 'Role', organisation: 'Organisation', designation: 'Designation',
   email: 'Email', phone: 'Phone', altPhone: 'Alt phone', whatsapp: 'WhatsApp', whatsappOptIn: 'WhatsApp opt-in',
-  country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage', tier: 'Tier', priority: 'Priority',
+  country: 'Country', city: 'City', vehicle: 'Vehicle', stage: 'Stage', heat: 'Heat', dormant: 'Dormant',
+  wakeDate: 'Wake date', closedStatus: 'Closed status', revisitDate: 'Revisit date', tier: 'Tier', priority: 'Priority',
   referredBy: 'Referred by', lastContact: 'Last contact', nextAction: 'Next action', nextActionDate: 'Next action date',
   relationshipOwner: 'Relationship owner', source: 'Source / channel', signal: 'Signal / tags', notes: 'Notes', roughNotes: 'Rough notes',
 };
@@ -106,7 +135,7 @@ export const FIELD_LABELS = {
 /* Fields searched by the header search box. */
 export const SEARCH_FIELDS = [
   'fullName', 'organisation', 'designation', 'email', 'country', 'city',
-  'stage', 'entityType', 'relationshipOwner', 'source', 'vehicle', 'notes', 'referredBy',
+  'stage', 'heat', 'entityType', 'relationshipOwner', 'source', 'vehicle', 'notes', 'referredBy',
   'tier', 'priority', 'signal', 'roughNotes',
 ];
 

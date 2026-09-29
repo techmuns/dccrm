@@ -6,10 +6,11 @@
  * Reads/writes go through the store (live Cloudflare D1). In preview mode (no
  * database) the write controls are hidden and it stays read-only.
  */
-import { ALL_STAGES } from '../config.js';
+import { ALL_STAGES, HEAT_VALUES, HEAT_STAGES, STAGE_HINTS, CLOSED_LABELS } from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { formatDate, daysFromToday, escapeHtml, tidy } from '../util.js';
+import { isClosed } from '../data.js';
 import { openTimeline } from './timeline.js';
 import { CADENCES, applyCadence, addReminder, dueInDays } from '../cadences.js';
 import * as store from '../store.js';
@@ -167,13 +168,114 @@ function renderReplies(host, replies) {
   refreshIcons(host);
 }
 
+/* ---------- pipeline (Stage · Heat · Dormant · Close), the finalised model ---------- */
+
+const closedChip = (c) => h('span', { class: 'cat-chip', style: '--c:#c0392b' },
+  [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: `Closed · ${CLOSED_LABELS[c.closedStatus] || ''}`.trim() })]);
+
+/** The header chips: type, then stage (or Closed), plus Heat and a Dormant badge. */
+function headChips(contact) {
+  return h('div', { class: 'drawer-chips' }, [
+    chip('entityType', contact.entityType),
+    isClosed(contact) ? closedChip(contact) : chip('stage', contact.stage),
+    (!isClosed(contact) && contact.heat) ? chip('heat', contact.heat) : null,
+    contact.dormant ? h('span', { class: 'cat-chip', style: '--c:#8f8f96' }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: 'Dormant' })]) : null,
+  ]);
+}
+
+/**
+ * Interactive Pipeline panel (live): Stage (with the "move on when" hint), Heat (only on the
+ * early stages), a Dormant toggle + wake date, and Close (Passed / Disqualified + revisit) with
+ * Reopen. Every change goes through store.updateContact — the server logs it to the timeline.
+ * Repaints in place (no full-body re-render) and refreshes the header chips + memory timeline.
+ */
+function pipelinePanel(contact) {
+  const wrap = h('div', { class: 'drawer-section pipe-panel' });
+
+  const applyPatch = async (patch) => {
+    const r = await store.updateContact(contact.id, patch, { optimistic: false, source: 'Manual' });
+    if (!r.ok) { toast(r.error || 'Could not save that change.', 'warn'); return; }
+    Object.assign(contact, r.contact);
+    paint();
+    const chipsHost = refs.head.querySelector('.drawer-chips');
+    if (chipsHost) chipsHost.replaceWith(headChips(contact));
+    reloadActivity(contact);   // pipeline changes are logged — refresh the timeline
+  };
+
+  function paint() {
+    const closed = isClosed(contact);
+    const heatShown = !closed && HEAT_STAGES.includes(contact.stage);
+
+    const stageSel = h('select', { class: 'field-input', title: STAGE_HINTS[contact.stage] || '' },
+      ALL_STAGES.map((s) => h('option', { value: s, text: s, selected: s === contact.stage ? '' : null })));
+    if (!ALL_STAGES.includes(contact.stage)) stageSel.prepend(h('option', { value: contact.stage || '', text: contact.stage || '—', selected: '' }));
+    if (closed) stageSel.disabled = true;
+    stageSel.addEventListener('change', () => applyPatch({ stage: stageSel.value }));
+    const hint = STAGE_HINTS[contact.stage] ? h('p', { class: 'pipe-hint', text: `Move on when: ${STAGE_HINTS[contact.stage]}` }) : null;
+
+    let heatRow = null;
+    if (heatShown) {
+      const heatSel = h('select', { class: 'field-input' }, [h('option', { value: '', text: '—', selected: contact.heat ? null : '' }),
+        ...HEAT_VALUES.map((hv) => h('option', { value: hv, text: hv, selected: hv === contact.heat ? '' : null }))]);
+      heatSel.addEventListener('change', () => applyPatch({ heat: heatSel.value }));
+      heatRow = h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Heat' }), heatSel]);
+    }
+
+    let dormRow = null;
+    if (!closed) {
+      const dormBox = h('input', { type: 'checkbox', role: 'switch' });
+      dormBox.checked = !!contact.dormant;
+      dormBox.addEventListener('change', () => applyPatch({ dormant: dormBox.checked ? 1 : 0 }));
+      const wakeInput = h('input', { class: 'field-input pipe-date', type: 'date', value: contact.wakeDate || '' });
+      wakeInput.addEventListener('change', () => applyPatch({ wakeDate: wakeInput.value }));
+      dormRow = h('div', { class: 'pipe-row' }, [
+        h('label', { class: 'fb-switch' }, [dormBox, h('span', { class: 'fb-track' }), h('span', { text: 'Dormant' })]),
+        contact.dormant ? h('label', { class: 'pipe-inline' }, [h('span', { class: 'pipe-lbl', text: 'Wake' }), wakeInput]) : null,
+      ]);
+    }
+
+    let closeRow;
+    if (closed) {
+      const revInput = h('input', { class: 'field-input pipe-date', type: 'date', value: contact.revisitDate || '' });
+      revInput.addEventListener('change', () => applyPatch({ revisitDate: revInput.value }));
+      const reopen = h('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, [icon('rotate-ccw', 'size-3.5'), h('span', { text: 'Reopen → Target' })]);
+      reopen.addEventListener('click', () => applyPatch({ closedStatus: '', stage: 'Target', revisitDate: '' }));
+      closeRow = h('div', { class: 'pipe-closed' }, [
+        h('div', { class: 'pipe-closed-l' }, [icon('circle-slash', 'size-3.5'), h('span', { text: `Closed — ${CLOSED_LABELS[contact.closedStatus] || ''}` })]),
+        h('label', { class: 'pipe-inline' }, [h('span', { class: 'pipe-lbl', text: 'Revisit' }), revInput]),
+        reopen,
+      ]);
+    } else {
+      const revInput = h('input', { class: 'field-input pipe-date', type: 'date', 'aria-label': 'Revisit date' });
+      const passBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'They declined' }, [h('span', { text: 'Passed' })]);
+      const dqBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'We declined' }, [h('span', { text: 'Disqualified' })]);
+      passBtn.addEventListener('click', () => applyPatch({ closedStatus: 'passed', revisitDate: revInput.value }));
+      dqBtn.addEventListener('click', () => applyPatch({ closedStatus: 'disqualified', revisitDate: revInput.value }));
+      closeRow = h('div', { class: 'pipe-close' }, [
+        h('span', { class: 'pipe-lbl', text: 'Close' }), passBtn, dqBtn,
+        h('label', { class: 'pipe-inline' }, [h('span', { class: 'pipe-lbl', text: 'Revisit' }), revInput]),
+      ]);
+    }
+
+    wrap.replaceChildren(...[
+      h('h3', {}, [icon('git-branch', 'size-3.5'), 'Pipeline']),
+      h('label', { class: 'pipe-row' }, [h('span', { class: 'pipe-lbl', text: 'Stage' }), stageSel]),
+      hint, heatRow, dormRow, closeRow,
+    ].filter(Boolean));   // native replaceChildren() coerces a null arg to the text "null"
+    refreshIcons(wrap);
+  }
+
+  paint();
+  return wrap;
+}
+
 function renderView(contact, opts = {}) {
-  refs.head.replaceChildren(
+  refs.head.replaceChildren(...[
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
     h('div', { class: 'drawer-name', text: contact.fullName || 'Unnamed contact' }),
     contact.organisation ? h('div', { class: 'drawer-org', text: contact.organisation }) : null,
-    h('div', { class: 'drawer-chips' }, [chip('entityType', contact.entityType), chip('stage', contact.stage)]),
-  );
+    headChips(contact),
+  ].filter(Boolean));
 
   const dueDays = daysFromToday(contact.nextActionAt);
   const nextValue = contact.nextActionDate
@@ -198,7 +300,7 @@ function renderView(contact, opts = {}) {
     h('div', { class: 'replies-host' }),
   ]);
 
-  refs.body.replaceChildren(
+  refs.body.replaceChildren(...[
     store.isLive() ? aiPanel(contact) : null,
     store.isLive() ? draftPanel(contact, { autoOpen: !!opts.draft }) : null,
     section('Identity', 'user', [
@@ -219,12 +321,19 @@ function renderView(contact, opts = {}) {
       field('Country', contact.country),
       field('City', contact.city),
     ]),
-    section('Pipeline', 'git-branch', [
-      field('Stage', contact.stage),
+    store.isLive() ? pipelinePanel(contact) : section('Pipeline', 'git-branch', [
+      field('Stage', isClosed(contact) ? `Closed — ${CLOSED_LABELS[contact.closedStatus] || ''}` : contact.stage),
+      field('Heat', contact.heat),
+      field('Dormant', contact.dormant ? 'Yes' : ''),
       field('Vehicle', contact.vehicle),
       field('Tier', contact.tier),
       field('Priority', contact.priority),
     ]),
+    store.isLive() ? section('Investment', 'briefcase', [
+      field('Vehicle', contact.vehicle),
+      field('Tier', contact.tier),
+      field('Priority', contact.priority),
+    ]) : null,
     section('Follow-up', 'calendar-check', [
       field('Last contact', contact.lastContact ? formatDate(contact.lastContactAt) : ''),
       field('Next action', contact.nextAction),
@@ -252,7 +361,7 @@ function renderView(contact, opts = {}) {
     store.isLive() ? followupPlan(contact) : null,
     store.isLive() ? tasksSection : null,
     activitySection,
-  );
+  ].filter(Boolean));
 
   /* footer: timeline (any real contact) + edit / delete (live only) + quick contact actions */
   const footChildren = [];
@@ -476,7 +585,7 @@ function followupHint(contact) {
 /* ---------- activity timeline ---------- */
 
 const ACTIVITY_TYPES = ['Note', 'Call', 'Email', 'Meeting', 'WhatsApp', 'Other'];
-const ACTIVITY_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'mail', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', Other: 'circle-dot' };
+const ACTIVITY_ICON = { Note: 'sticky-note', Call: 'phone', Email: 'mail', Meeting: 'users', WhatsApp: 'message-circle', 'Stage change': 'git-branch', 'Heat change': 'flame', Dormant: 'moon', Status: 'circle-slash', Other: 'circle-dot' };
 
 function renderActivityInto(contact, host, activities) {
   const list = h('ul', { class: 'timeline' });

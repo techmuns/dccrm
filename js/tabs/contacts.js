@@ -9,11 +9,11 @@
  * Everything here is composed from shared pieces: the FilterBar, the DataTable, the
  * DetailDrawer, the chart-card helper, and the Phase 1 data + colour layers.
  */
-import { PALETTE, STAGE_ORDER, STAGE_DORMANT, ALL_STAGES } from '../config.js';
+import { PALETTE, ALL_STAGES, HEAT_VALUES, HEAT_STAGES, CLOSED_LABELS } from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
 import { countBy, formatNumber, formatPercent, tidy } from '../util.js';
-import { series } from '../data.js';
+import { series, isClosed } from '../data.js';
 import { contactsToCsv } from '../filters.js';
 import { createFilterBar } from '../components/filterbar.js';
 import { mountDataTable } from '../components/datatable.js';
@@ -33,7 +33,7 @@ import * as store from '../store.js';
 /** Stage-split items covering EVERYONE in the selection, in pipeline order. */
 function stageSplitItems(contacts) {
   const counts = countBy(contacts, 'stage');
-  // Funnel order, then Hot + Dormant, then any other stage value the data contains.
+  // The six stages in funnel order, then any other stage value the data happens to contain.
   const order = [...ALL_STAGES, ...[...counts.keys()].filter((s) => !ALL_STAGES.includes(s))];
   return order
     .filter((name) => counts.get(name))
@@ -57,6 +57,33 @@ function stageEditor(contact) {
   sel.addEventListener('change', () => {
     sel.style.setProperty('--c', colorOf('stage', sel.value));
     quickEdit(contact, { stage: sel.value });
+  });
+  return sel;
+}
+
+/** The Stage cell: a Closed chip for closed records, else the inline stage editor,
+ *  with a small Dormant badge appended when the record is parked. */
+function stageCell(contact) {
+  if (isClosed(contact)) {
+    return h('span', { class: 'closed-chip', title: 'Closed — open the profile to reopen' },
+      [icon('circle-slash', 'size-3'), h('span', { text: CLOSED_LABELS[contact.closedStatus] || 'Closed' })]);
+  }
+  const el = store.isLive() ? stageEditor(contact) : chipCell('stage', contact.stage);
+  if (!contact.dormant) return el;
+  return h('div', { class: 'stage-cell' }, [el, h('span', { class: 'dormant-badge', title: 'Dormant', text: 'Zzz' })]);
+}
+
+/** A compact Heat <select>, shown only where Heat applies (early stages, not closed). */
+function heatEditor(contact) {
+  if (isClosed(contact) || !HEAT_STAGES.includes(contact.stage)) return h('span', { class: 'dt-muted', text: '—' });
+  const sel = h('select', {
+    class: 'cell-edit heat-edit', 'aria-label': 'Heat', style: `--c:${colorOf('heat', contact.heat)}`,
+  }, [h('option', { value: '', text: '—', selected: contact.heat ? null : '' }),
+    ...HEAT_VALUES.map((hv) => h('option', { value: hv, text: hv, selected: hv === contact.heat ? '' : null }))]);
+  stopBubbling(sel);
+  sel.addEventListener('change', () => {
+    sel.style.setProperty('--c', colorOf('heat', sel.value));
+    quickEdit(contact, { heat: sel.value });
   });
   return sel;
 }
@@ -114,6 +141,7 @@ export function render(container) {
     dimensions: [
       { field: 'entityType',        label: 'Type',    icon: 'building-2' },
       { field: 'stage',             label: 'Stage',   icon: 'git-branch' },
+      { field: 'heat',              label: 'Heat',    icon: 'flame' },
       { field: 'country',           label: 'Country', icon: 'globe' },
       { field: 'vehicle',           label: 'Vehicle', icon: 'briefcase' },
       { field: 'source',            label: 'Source',  icon: 'route' },
@@ -123,6 +151,7 @@ export function render(container) {
         test: (c, set) => (c.tags || []).some((t) => set.has(t.name)) },
     ],
     toggles: [
+      { key: 'dormant', label: 'Dormant only', icon: 'moon', predicate: (c) => !!c.dormant },
       { key: 'whatsappOptIn', label: 'WhatsApp opt-in only', icon: 'message-circle',
         predicate: (c) => c.whatsappOptIn === 'Yes' },
     ],
@@ -170,7 +199,10 @@ export function render(container) {
       sortValue: (r) => r.country?.toLowerCase(), render: (r) => textCell(r.country) },
     { key: 'stage', label: 'Stage', cellClass: 'col-stage',
       sortValue: (r) => { const i = ALL_STAGES.indexOf(r.stage); return i < 0 ? 99 : i; },
-      render: (r) => (store.isLive() ? stageEditor(r) : chipCell('stage', r.stage)) },
+      render: (r) => stageCell(r) },
+    { key: 'heat', label: 'Heat', cellClass: 'col-heat',
+      sortValue: (r) => { const i = HEAT_VALUES.indexOf(r.heat); return i < 0 ? 9 : i; },
+      render: (r) => (store.isLive() ? heatEditor(r) : chipCell('heat', r.heat)) },
     { key: 'relationshipOwner', label: 'Owner', cellClass: 'col-owner',
       sortValue: (r) => r.relationshipOwner?.toLowerCase(),
       render: (r) => (store.isLive() ? ownerEditor(r) : textCell(r.relationshipOwner)) },
@@ -227,6 +259,9 @@ export function render(container) {
     { key: 'city', label: 'City', width: 130, type: 'text', datalist: () => uniqVals('city') },
     { key: 'vehicle', label: 'Vehicle', width: 175, type: 'enum', options: () => uniqVals('vehicle') },
     { key: 'stage', label: 'Stage', width: 145, type: 'enum', colorDim: 'stage', options: () => [...ALL_STAGES] },
+    { key: 'heat', label: 'Heat', width: 110, type: 'enum', colorDim: 'heat', options: () => [...HEAT_VALUES] },
+    { key: 'dormant', label: 'Dormant', width: 95, type: 'bool' },
+    { key: 'closedStatus', label: 'Closed', width: 130, type: 'closed' },
     { key: 'tier', label: 'Tier', width: 80, type: 'enum', options: () => withBase(['A', 'B', 'C'], 'tier') },
     { key: 'priority', label: 'Priority', width: 105, type: 'enum', options: () => withBase(['High', 'Medium', 'Low'], 'priority') },
     { key: 'referredBy', label: 'Referred By', width: 150, type: 'text', datalist: () => uniqVals('referredBy') },
@@ -264,7 +299,26 @@ export function render(container) {
     [icon('sparkles', 'size-3.5'), h('span', { text: 'Ask AI' })]);
   const needsBtn = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', title: 'Select everyone the priorities panel flags', onClick: selectNeedsOutreach },
     [icon('list-checks', 'size-3.5'), h('span', { text: 'Needs outreach' })]);
-  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, gridHint, h('div', { class: 'ml-auto flex items-center gap-2' }, [needsBtn, askBtn])]);
+
+  /* Active pipeline (default) hides Closed; the Closed / All scopes surface them apart. */
+  let pipelineScope = 'active';
+  const scopeBtns = {};
+  const scopeToggle = h('div', { class: 'mode-toggle scope-toggle' }, [['active', 'Active'], ['closed', 'Closed'], ['all', 'All']].map(([k, label]) => {
+    const b = h('button', { type: 'button', 'aria-pressed': String(k === 'active'),
+      title: k === 'active' ? 'Active pipeline (Closed hidden)' : k === 'closed' ? 'Closed records only (Passed / Disqualified)' : 'Everyone, including Closed' },
+      [h('span', { text: label })]);
+    b.addEventListener('click', () => setScope(k));
+    scopeBtns[k] = b;
+    return b;
+  }));
+  function setScope(next) {
+    pipelineScope = next;
+    for (const [k, b] of Object.entries(scopeBtns)) b.setAttribute('aria-pressed', String(k === next));
+    if (mode === 'edit') table.clearSelection?.();
+    refresh();
+  }
+
+  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, scopeToggle, gridHint, h('div', { class: 'ml-auto flex items-center gap-2' }, [needsBtn, askBtn])]);
 
   function applyModeDom() {
     if (mode === 'edit' && !store.isLive()) mode = 'view';
@@ -478,6 +532,9 @@ export function render(container) {
     renderSegments();
     const base = currentState.visible;              // already respects the global search
     filtered = filterBar.apply(base);
+    // Closed (Passed / Disqualified) sit apart from the active pipeline (Phase 9).
+    if (pipelineScope === 'active') filtered = filtered.filter((c) => !isClosed(c));
+    else if (pipelineScope === 'closed') filtered = filtered.filter((c) => isClosed(c));
 
     // Edit (grid) mode: the same filtered set, editable. Per-cell saves don't re-enter
     // here (they're silent), so the grid is only rebuilt on a real filter/search change.

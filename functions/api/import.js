@@ -12,7 +12,7 @@
  *
  * Returns { added, updated, skipped, mode }.
  */
-import { WRITABLE, json, fail, noDb, now, readJson, ensureSchema, currentUser } from './_lib.js';
+import { WRITABLE, remapStage, json, fail, noDb, now, readJson, ensureSchema, currentUser } from './_lib.js';
 
 const chunk = (arr, n) => {
   const out = [];
@@ -31,11 +31,20 @@ const clean = (row) => {
   const v = {};
   for (const key of WRITABLE) {
     if (row[key] == null) continue;
+    if (key === 'dormant') { v.dormant = /^(1|yes|true|y)$/i.test(String(row.dormant).trim()) ? 1 : 0; continue; }
     let val = String(row[key]).trim();
     if (key === 'email') val = val.toLowerCase();
+    if (key === 'closedStatus') val = val.toLowerCase();
     if (key === 'entityType' && val) val = ENTITY_TYPE_FIXES[keyify(val)] || val;
     v[key] = val === '' ? null : val;
   }
+  // Finalised-model remap (Phase 9): the sheet's "Stage" → the new Stage (+ Heat / Dormant),
+  // via the SAME mapping the boot migration uses. A sheet that already carries its own Heat /
+  // Dormant columns keeps them; a legacy Stage value (Qualified/Cold/…) supplies them instead.
+  const m = remapStage(v.stage);
+  v.stage = m.stage;
+  if (m.heat && v.heat == null) v.heat = m.heat;
+  if (m.dormant && v.dormant == null) v.dormant = 1;
   return v;
 };
 

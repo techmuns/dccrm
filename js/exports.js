@@ -19,6 +19,7 @@ export const EXPORT_COLUMNS = [
   ['entityType', 'Entity Type'], ['role', 'Role'], ['designation', 'Designation'], ['email', 'Email'],
   ['phone', 'Phone'], ['whatsapp', 'WhatsApp Number'], ['whatsappOptIn', 'WhatsApp Opt-In'],
   ['country', 'Primary Country'], ['city', 'Primary City'], ['vehicle', 'Vehicle'], ['stage', 'Stage'],
+  ['heat', 'Heat'], ['dormant', 'Dormant'], ['wakeDate', 'Wake Date'], ['closedStatus', 'Closed Status'], ['revisitDate', 'Revisit Date'],
   ['referredBy', 'Referred By'], ['lastContact', 'Last Contact'], ['nextAction', 'Next Action'],
   ['nextActionDate', 'Next Action Date'], ['relationshipOwner', 'Relationship Owner'],
   ['source', 'Source / Channel'], ['tier', 'Tier'], ['priority', 'Priority'], ['signal', 'Signal / Tags'],
