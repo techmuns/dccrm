@@ -193,15 +193,15 @@ export const SEARCH_FIELDS = [
 
 /* Tab bar. Only 'overview' is live in Phase 1; the rest render the coming-soon shell
    so the structure of the product is visible from day one. */
+/* Five tabs, each the ONE home for its job: Overview = all analytics + AI intelligence;
+   Investors = the book (grid / board / follow-ups); Inbox = incoming replies;
+   Outreach = compose + campaigns; LP Book = funded LPs. */
 export const TABS = [
-  { id: 'overview',   label: 'Overview',    icon: 'layout-dashboard', ready: true },
-  { id: 'contacts',   label: 'Contacts',    icon: 'users',            ready: true },
-  { id: 'followups',  label: 'Follow-ups',  icon: 'calendar-check',   ready: true },
-  { id: 'inbox',      label: 'Inbox',       icon: 'inbox',            ready: true },
-  { id: 'lpbook',     label: 'LP Book',     icon: 'landmark',         ready: true },
-  { id: 'campaigns',  label: 'Campaigns',   icon: 'send',             ready: true },
-  { id: 'compose',    label: 'Compose',     icon: 'mail-plus',        ready: true },
-  { id: 'insights',   label: 'AI Insights', icon: 'sparkles',         ready: true },
+  { id: 'overview',   label: 'Overview',  icon: 'layout-dashboard', ready: true },
+  { id: 'investors',  label: 'Investors', icon: 'users',            ready: true },
+  { id: 'inbox',      label: 'Inbox',     icon: 'inbox',            ready: true },
+  { id: 'outreach',   label: 'Outreach',  icon: 'send',             ready: true },
+  { id: 'lpbook',     label: 'LP Book',   icon: 'landmark',         ready: true },
 ];
 
 export const STORAGE_KEY = 'dccrm.data.v1';

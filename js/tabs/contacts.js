@@ -1,24 +1,27 @@
 /**
- * tabs/contacts.js — the contact universe with live filtering.
+ * tabs/contacts.js — Investors: the contact universe with live filtering.
  *
- * The point of this screen: narrow the base by any dimension and instantly see how
- * that group splits across the pipeline — who's in active conversation, who was
- * contacted but never replied, who's never been reached. Filters + summary stay
- * fixed at the top; only the table scrolls.
+ * The point of this screen: narrow the base by any dimension and instantly see the
+ * matching people — who's in active conversation, who was contacted but never replied,
+ * who's never been reached. Filters stay fixed at the top; only the table scrolls.
+ *
+ * A section toggle folds the old Follow-ups tab in here (dashboard simplification): the
+ * reminders hub renders unchanged in its own section, and a "Follow-ups due" filter narrows
+ * the investor list itself. No charts or stats live here — analytics belong to Overview,
+ * which is their single home; this screen is purely the list + the follow-ups hub.
  *
  * Everything here is composed from shared pieces: the FilterBar, the DataTable, the
- * DetailDrawer, the chart-card helper, and the Phase 1 data + colour layers.
+ * DetailDrawer, the follow-ups view, and the Phase 1 data + colour layers.
  */
 import { PALETTE, ALL_STAGES, HEAT_VALUES, HEAT_STAGES, CLOSED_LABELS } from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
 import { colorOf } from '../colors.js';
-import { countBy, formatNumber, formatPercent, tidy } from '../util.js';
-import { series, isClosed } from '../data.js';
+import { formatNumber, tidy, daysFromToday } from '../util.js';
+import { isClosed } from '../data.js';
 import { contactsToCsv } from '../filters.js';
 import { createFilterBar } from '../components/filterbar.js';
 import { mountDataTable } from '../components/datatable.js';
 import { mountGrid } from '../components/grid.js';
-import { createChartCard } from '../components/chartcard.js';
 import { openDrawer } from '../components/drawer.js';
 import { openTimeline } from '../components/timeline.js';
 import { openAskModal } from '../ai/askbox.js';
@@ -26,19 +29,9 @@ import { openModal } from '../components/modal.js';
 import { needsOutreachIds } from '../ai/priorities.js';
 import { exportContactsXlsx, sendListParts, exportSendListXlsx, exportSendListCsv, sendListTsv, copyToClipboard } from '../exports.js';
 import { nameCell, chipCell, textCell, dateCell } from '../components/cells.js';
-import { segmentedBarOption, donutOption, hbarOption } from '../charts.js';
-import { takeContactsPreset, goToCompose } from '../nav.js';
+import { takeContactsPreset, goToCompose, takeInvestorsView } from '../nav.js';
+import { render as renderFollowups } from './followups.js';
 import * as store from '../store.js';
-
-/** Stage-split items covering EVERYONE in the selection, in pipeline order. */
-function stageSplitItems(contacts) {
-  const counts = countBy(contacts, 'stage');
-  // The six stages in funnel order, then any other stage value the data happens to contain.
-  const order = [...ALL_STAGES, ...[...counts.keys()].filter((s) => !ALL_STAGES.includes(s))];
-  return order
-    .filter((name) => counts.get(name))
-    .map((name) => ({ name, value: counts.get(name), color: colorOf('stage', name) }));
-}
 
 /** Push a single-field change to the database, optimistically. */
 async function quickEdit(contact, patch) {
@@ -151,6 +144,8 @@ export function render(container) {
         test: (c, set) => (c.tags || []).some((t) => set.has(t.name)) },
     ],
     toggles: [
+      { key: 'fudue', label: 'Follow-ups due', icon: 'calendar-clock',
+        predicate: (c) => !isClosed(c) && !c.dormant && daysFromToday(c.nextActionAt) != null && daysFromToday(c.nextActionAt) <= 7 },
       { key: 'dormant', label: 'Dormant only', icon: 'moon', predicate: (c) => !!c.dormant },
       { key: 'hideTopups', label: 'Hide top-ups', icon: 'copy-minus', predicate: (c) => !c.isTopUp },
       { key: 'whatsappOptIn', label: 'WhatsApp opt-in only', icon: 'message-circle',
@@ -158,27 +153,6 @@ export function render(container) {
     ],
     onChange: () => refresh(),
   });
-
-  /* summary widgets */
-  const split = createChartCard({
-    title: 'How this selection splits by stage',
-    subtitle: 'Showing all contacts',
-    iconName: 'align-horizontal-distribute-center', accent: PALETTE[0], chartClass: 'chart--split',
-  });
-  const donut = createChartCard({
-    title: 'By type', subtitle: 'The current selection.',
-    iconName: 'chart-pie', accent: PALETTE[5], chartClass: 'chart--mini-donut',
-  });
-  const countries = createChartCard({
-    title: 'Top countries', subtitle: 'The current selection.',
-    iconName: 'globe', accent: PALETTE[2], chartClass: 'chart--mini-hbar',
-  });
-
-  const summary = h('div', { class: 'grid grid-cols-1 lg:grid-cols-12 gap-4' }, [
-    h('div', { class: 'lg:col-span-6 flex' }, [split.el]),
-    h('div', { class: 'lg:col-span-3 flex' }, [donut.el]),
-    h('div', { class: 'lg:col-span-3 flex' }, [countries.el]),
-  ]);
 
   /* table */
   const exportBtn = h('button', { class: 'btn btn-quiet', type: 'button', title: 'Export the current list to CSV' }, [icon('download', 'size-4'), h('span', { class: 'hidden lg:inline', text: 'CSV' })]);
@@ -319,7 +293,18 @@ export function render(container) {
     refresh();
   }
 
-  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap' }, [modeToggle, scopeToggle, gridHint, h('div', { class: 'ml-auto flex items-center gap-2' }, [needsBtn, askBtn])]);
+  /* ---------- section toggle: the list (Investors) ⇄ the folded-in Follow-ups hub ---------- */
+  const sectionBtns = {};
+  const sectionToggle = h('div', { class: 'mode-toggle section-toggle' },
+    [['investors', 'Investors', 'users'], ['followups', 'Follow-ups', 'calendar-clock']].map(([k, label, ic]) => {
+      const b = h('button', { type: 'button', 'aria-pressed': String(k === 'investors') }, [icon(ic, 'size-3.5'), h('span', { text: label })]);
+      b.addEventListener('click', () => setSection(k));
+      sectionBtns[k] = b;
+      return b;
+    }));
+
+  const investorControls = h('div', { class: 'flex items-center gap-3 flex-wrap flex-1' }, [modeToggle, scopeToggle, gridHint, h('div', { class: 'ml-auto flex items-center gap-2' }, [needsBtn, askBtn])]);
+  const modeBar = h('div', { class: 'flex items-center gap-3 flex-wrap investors-bar' }, [sectionToggle, investorControls]);
 
   function applyModeDom() {
     if (mode === 'edit' && !store.isLive()) mode = 'view';
@@ -328,7 +313,6 @@ export function render(container) {
     editBtn.setAttribute('aria-pressed', String(editing));
     editBtn.disabled = !store.isLive();
     editBtn.title = store.isLive() ? 'Edit contacts in a spreadsheet grid' : 'Connect the database to edit inline';
-    summary.classList.toggle('hidden', editing);
     tableHost.classList.toggle('hidden', editing);
     gridHost.classList.toggle('hidden', !editing);
     gridHint.classList.toggle('hidden', !editing);
@@ -346,12 +330,32 @@ export function render(container) {
     refresh();
   }
 
-  container.append(modeBar, filterBar.el, segmentsRow, filterBar.chipsEl, summary, bulkBar, tableHost, gridHost);
+  const investorBody = h('div', { class: 'investors-body flex flex-col flex-1 min-h-0' }, [filterBar.el, segmentsRow, filterBar.chipsEl, bulkBar, tableHost, gridHost]);
+  const fuHost = h('div', { class: 'followups-host hidden' });
+  container.append(modeBar, investorBody, fuHost);
   refreshIcons(container);
 
   let currentState = null;
   let filtered = [];
   let selectedIds = new Set();
+  let section = 'investors';
+  let fuHandle = null;
+
+  /* Switch between the investor list and the folded-in Follow-ups hub. The hub is mounted
+     lazily the first time it's shown, then kept in sync on every state update. */
+  function setSection(next) {
+    if (next === section) return;
+    section = next;
+    for (const [k, b] of Object.entries(sectionBtns)) b.setAttribute('aria-pressed', String(k === next));
+    const onFollowups = next === 'followups';
+    investorControls.classList.toggle('hidden', onFollowups);
+    investorBody.classList.toggle('hidden', onFollowups);
+    fuHost.classList.toggle('hidden', !onFollowups);
+    if (onFollowups) {
+      if (!fuHandle) fuHandle = renderFollowups(fuHost);
+      if (currentState) fuHandle.update(currentState);
+    }
+  }
 
   /* ---------- saved segments ---------- */
   function renderSegments() {
@@ -529,7 +533,7 @@ export function render(container) {
     m.refresh();
   }
 
-  /** Re-apply the filters to the current data and redraw everything. */
+  /** Re-apply the filters to the current data and redraw the list. */
   function refresh() {
     if (!currentState || currentState.status !== 'ready') return;
     renderSegments();
@@ -543,61 +547,29 @@ export function render(container) {
     // here (they're silent), so the grid is only rebuilt on a real filter/search change.
     if (mode === 'edit' && store.isLive()) { grid.setRows(filtered); return; }
 
-    const total = currentState.contacts.length;
-    split.setSubtitle(`Showing ${formatNumber(filtered.length)} of ${formatNumber(total)} contacts`);
-
-    if (!filtered.length) {
-      const msg = 'No contacts match these filters.';
-      split.setState('empty', { message: msg });
-      donut.setState('empty', { message: msg });
-      countries.setState('empty', { message: msg });
-      table.setRows([]);
-      return;
-    }
-
-    /* stage split — the centrepiece */
-    const splitItems = stageSplitItems(filtered);
-    split.draw(segmentedBarOption(splitItems), splitItems, { segmented: true, showShare: true, valueLabel: 'people' });
-
-    /* reactive donut + countries */
-    const byType = series(filtered, 'entityType', { foldOther: true });
-    donut.draw(donutOption(byType.data, { centerValue: formatNumber(filtered.length), centerLabel: 'selected' }), byType.data, { showShare: true, valueLabel: 'Investors' });
-
-    const byCountry = series(filtered, 'country', { limit: 7 });
-    countries.draw(hbarOption(byCountry.data, { valueLabel: 'People' }), byCountry.data, { valueLabel: 'People', showLegendValue: false });
-    countries.note(byCountry.hiddenCount ? `+${byCountry.hiddenCount} more ${byCountry.hiddenCount === 1 ? 'country' : 'countries'}` : '');
-
-    /* table */
     table.setRows(filtered);
   }
 
   function update(state) {
     currentState = state;
-    if (state.status === 'loading') {
-      split.setState('loading'); donut.setState('loading'); countries.setState('loading');
-      table.setState('loading');
-      return;
-    }
-    if (state.status === 'error') {
-      split.setState('error', { message: state.error });
-      donut.setState('error', { message: state.error });
-      countries.setState('error', { message: state.error });
-      table.setState('error', { message: state.error });
-      return;
-    }
+    if (state.status === 'loading') { table.setState('loading'); fuHandle?.update(state); return; }
+    if (state.status === 'error') { table.setState('error', { message: state.error }); fuHandle?.update(state); return; }
     filterBar.setData(state.contacts);
     const preset = takeContactsPreset();
     if (preset) filterBar.setSelections(preset);   // arrives from a cross-tab jump
+    // A cross-tab jump can ask us to open the folded-in Follow-ups hub (e.g. Overview's summary).
+    if (takeInvestorsView() === 'followups') setSection('followups');
     applyModeDom();
     refresh();
+    if (section === 'followups') fuHandle?.update(state);
   }
 
   return {
     update,
     destroy() {
       container.parentElement?.classList.remove('view--fill');
-      split.destroy(); donut.destroy(); countries.destroy();
       table.destroy(); grid.destroy();
+      fuHandle?.destroy();
     },
   };
 }

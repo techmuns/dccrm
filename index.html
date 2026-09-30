@@ -1153,6 +1153,31 @@ select.lp-sig { width:100%; font-weight:600; color:#3a3a42; padding-left:1.05rem
 .task-del { border:0; background:none; color:#c7c7c4; cursor:pointer; padding:.15rem; flex:none; }
 .task-del:hover { color:#c0392b; }
 
+/* =========================================================================
+   Dashboard simplification (Step 1) — 5 tabs, one home per thing
+   ========================================================================= */
+
+/* Outreach: Compose ⇄ Campaigns sub-toggle. Each embedded module keeps its own
+   vertical rhythm — the tab-panel's row gap doesn't reach inside these hosts. */
+.outreach-view { display:flex; flex-direction:column; gap:1rem; min-height:0; }
+
+/* Investors: the list ⇄ folded-in Follow-ups section, wrapped so the table still fills. */
+.investors-body { gap:1rem; }
+.followups-host { display:flex; flex-direction:column; gap:1rem; min-height:0; }
+
+/* Overview: compact follow-ups summary (overdue / due today / this week). */
+.fu-overview { display:flex; align-items:center; gap:.5rem 1.25rem; flex-wrap:wrap;
+  background:#fff; border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow); padding:.6rem .85rem; }
+.fu-ov-l { display:inline-flex; align-items:center; gap:.45rem; color:var(--c1); font-weight:600; }
+.fu-ov-stats { display:inline-flex; align-items:center; gap:1.25rem; flex-wrap:wrap; }
+.fu-ov-stat { display:inline-flex; align-items:baseline; gap:.32rem; font-size:var(--fs-caption); color:var(--ink-3); }
+.fu-ov-stat b { font-size:1.1rem; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1; }
+.fu-ov-overdue b { color:var(--danger); }
+.fu-ov-today b { color:var(--amber); }
+
+/* Overview: the embedded AI-intelligence section (absorbed from the old Insights tab). */
+.insights-section { display:flex; flex-direction:column; gap:1rem; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
   .card:hover { transform:none; }

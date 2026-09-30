@@ -15,8 +15,6 @@ import { colorOf } from '../colors.js';
 import { createChartCard } from '../components/chartcard.js';
 import { createSourceNote, readJsonFile } from '../components/source-note.js';
 import { openDrawer } from '../components/drawer.js';
-import { createAskPanel } from '../ai/askbox.js';
-import { createPrioritiesPanel } from '../ai/priorities.js';
 import {
   insightsSource, joinInsights, priorityQueue, quietWarm, sentimentSplit, scoreBuckets, priorityColor,
 } from '../ai-insights.js';
@@ -120,7 +118,14 @@ function quietItem(c) {
   return el;
 }
 
-export function render(container) {
+/**
+ * The AI-intelligence section (Phase-13 simplification): everything the old "AI Insights" tab
+ * showed, as an embeddable section so it lives once, inside Overview. Returns { el, update,
+ * destroy }. The rule-based Ask box + priorities list are NOT here — Overview already owns
+ * those, so this section carries only the reply-scored intelligence.
+ */
+export function createInsightsSection() {
+  const container = h('div', { class: 'insights-section' });
   const note = createSourceNote({ source: insightsSource, accept: '.json', readFile: readJsonFile, noun: 'AI insights' });
 
   /* Live toolbar (real data): re-score everyone via the bulk GitHub Action, plus when
@@ -188,15 +193,7 @@ export function render(container) {
     h('div', { class: 'lg:col-span-5' }, [quietCard.el]),
   ]);
 
-  /* Phase 3 — an Ask box and the rule-based priorities list, at the top of AI Insights. */
-  const askPanel = createAskPanel();
-  const askCard = card({ title: 'Ask', subtitle: 'Plain-English questions about your investors.', iconName: 'sparkles', accent: PALETTE[5] });
-  askCard.content.append(askPanel.el);
-  askCard.setState('ready');
-  const priorities = createPrioritiesPanel();
-  const aiRow = h('div', { class: 'grid grid-cols-1 lg:grid-cols-2 gap-4 items-start' }, [askCard.el, priorities.el]);
-
-  container.append(topNote, aiRow, overview, priorityCardEl.el, bottom);
+  container.append(topNote, overview, priorityCardEl.el, bottom);
   refreshIcons(container);
 
   let latestState = null;
@@ -272,7 +269,8 @@ export function render(container) {
   if (insightsSource.state.status === 'loading') insightsSource.init();
 
   return {
-    update(state) { latestState = state; priorities.update(state); rebuild(); },
+    el: container,
+    update(state) { latestState = state; rebuild(); },
     destroy() {
       unsub();
       for (const w of [sentiment, buckets]) w.destroy();
