@@ -82,10 +82,9 @@ const mailto = (e) => (e ? `<a href="mailto:${encodeURIComponent(e)}">${escapeHt
 const tel = (p) => (p ? `<a href="tel:${escapeHtml(p.replace(/[^\d+]/g, ''))}">${escapeHtml(p)}</a>` : '');
 const wa = (n) => (n ? `<a href="https://wa.me/${n.replace(/[^\d]/g, '')}" target="_blank" rel="noopener">${escapeHtml(n)}</a>` : '');
 
-/* ---------- AI insight panel (Feature 1) + reply cards (Feature 2) ---------- */
+/* ---------- AI insight panel (Feature 1) ---------- */
 
 const BAND_COLOR = { Hot: '#c0392b', Warm: '#c08a2e', Cold: '#4c6ea5' };
-const SENTIMENT_COLOR = { Positive: '#2e8b74', Neutral: '#9a9aa0', Negative: '#c0392b' };
 
 function aiPanel(contact) {
   const scored = contact.aiScore != null;
@@ -127,50 +126,10 @@ function aiPanel(contact) {
   ]);
 }
 
-async function copyDraft(text, btn) {
-  try { await navigator.clipboard.writeText(text); }
-  catch {
-    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text;
-    document.body.append(ta); ta.select();
-    try { document.execCommand('copy'); } catch { /* ignore */ }
-    ta.remove();
-  }
-  btn.classList.add('done');
-  btn.querySelector('span').textContent = 'Copied';
-  setTimeout(() => { btn.classList.remove('done'); btn.querySelector('span').textContent = 'Copy reply'; }, 1600);
-}
-
-function replyCard(r) {
-  const c = SENTIMENT_COLOR[r.sentiment] || '#9a9aa0';
-  const draft = tidy(r.draftReply);
-  let draftBox = null;
-  if (draft) {
-    const copyBtn = h('button', { class: 'copy-btn', type: 'button' }, [icon('copy', 'size-3.5'), h('span', { text: 'Copy reply' })]);
-    copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyDraft(draft, copyBtn); });
-    draftBox = h('div', { class: 'draft-box' }, [
-      h('div', { class: 'dh' }, [icon('sparkles', 'size-3'), 'AI-drafted reply — review before sending']),
-      h('div', { text: draft }), copyBtn,
-    ]);
-  }
-  return h('div', { class: 'reply-card' }, [
-    h('div', { class: 'reply-card-top' }, [
-      h('span', { class: 'cat-chip', style: `--c:${c}` }, [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: r.sentiment || 'Neutral' })]),
-      r.questionsAsked ? h('span', { class: 't-caption', text: `${r.questionsAsked} question${r.questionsAsked === 1 ? '' : 's'}` }) : null,
-      h('span', { class: 't-caption', style: 'margin-left:auto', text: r.receivedAt ? formatDate(new Date(r.receivedAt)) : '' }),
-    ]),
-    r.subject ? h('div', { class: 'reply-subject', text: r.subject }) : null,
-    r.summary ? h('p', { class: 'reply-summary', text: r.summary }) : null,
-    draftBox,
-  ]);
-}
-
-function renderReplies(host, replies) {
-  const sectionEl = host.closest('.drawer-section');   // toggle the whole section, not just the host
-  if (!replies.length) { host.replaceChildren(); if (sectionEl) sectionEl.style.display = 'none'; return; }
-  if (sectionEl) sectionEl.style.display = '';
-  host.replaceChildren(...replies.map(replyCard));
-  refreshIcons(host);
-}
+/* Incoming email replies and their editable "suggested reply" draft live in ONE place —
+   the Inbox tab (tabs/inbox.js). The profile does NOT re-render the reply card or a second
+   copy of the draft editor; the contact's timeline shows a short "Email in — <summary>"
+   log entry (written by the ingest endpoint) as the reference. */
 
 /* ---------- pipeline (Stage · Heat · Dormant · Close), the finalised model ---------- */
 
@@ -453,10 +412,6 @@ function renderView(contact, opts = {}) {
     h('h3', {}, [icon('history', 'size-3.5'), 'Memory & activity']),
     h('div', { class: 'activity-host' }, [h('p', { class: 't-caption', text: 'Loading…' })]),
   ]);
-  const repliesSection = h('div', { class: 'drawer-section', style: 'display:none' }, [
-    h('h3', {}, [icon('mail', 'size-3.5'), 'Recent replies']),
-    h('div', { class: 'replies-host' }),
-  ]);
 
   // LIVE: the profile edits every field in place — the single editor for one contact.
   const liveBody = () => [
@@ -501,7 +456,6 @@ function renderView(contact, opts = {}) {
       { label: 'Notes', field: 'notes', kind: { type: 'textarea', wide: true } },
       { label: 'Rough notes for Raghav', field: 'roughNotes', kind: { type: 'textarea', wide: true } },
     ]),
-    repliesSection,
     tagsSection,
     followupPlan(contact),
     tasksSection,
@@ -590,7 +544,6 @@ function renderView(contact, opts = {}) {
       tags: tagsSection.querySelector('.tags-host'),
       tasks: tasksSection.querySelector('.tasks-host'),
       activity: activitySection.querySelector('.activity-host'),
-      replies: repliesSection.querySelector('.replies-host'),
     });
   } else {
     activitySection.querySelector('.activity-host').replaceChildren(
@@ -598,12 +551,13 @@ function renderView(contact, opts = {}) {
   }
 }
 
-/* fetch the contact's detail once, then fill tags / tasks / activity */
+/* fetch the contact's detail once, then fill tags / tasks / activity.
+   Replies are intentionally not rendered here — they live only in the Inbox tab; the
+   activity timeline already carries the "Email in" reference. */
 async function loadDetail(contact, hosts) {
   const detail = await store.getContactDetail(contact.id);
   renderTags(contact, hosts.tags, detail.tags || contact.tags || []);
   renderTasks(contact, hosts.tasks, detail.tasks || []);
-  if (hosts.replies) renderReplies(hosts.replies, detail.replies || []);
   renderActivityInto(contact, hosts.activity, detail.activities || []);
 }
 
