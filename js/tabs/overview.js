@@ -8,13 +8,15 @@
 import { PALETTE } from '../config.js';
 import { card, statTile, legend, footnote, h, icon, refreshIcons } from '../ui.js';
 import { mountChart, funnelOption, donutOption, hbarOption, barOption } from '../charts.js';
-import { headlineNumbers, pipelineStages, series } from '../data.js';
-import { formatNumber, formatPercent, escapeHtml } from '../util.js';
+import { headlineNumbers, pipelineStages, series, isClosed } from '../data.js';
+import { formatNumber, formatPercent, escapeHtml, daysFromToday } from '../util.js';
 import { setQuery } from '../store.js';
+import { goToFollowups } from '../nav.js';
 import { createUpdatePanel } from '../ai/updatebox.js';
 import { createAskPanel } from '../ai/askbox.js';
 import { createPrioritiesPanel } from '../ai/priorities.js';
 import { createNeedsPanel } from '../ai/needs.js';
+import { createInsightsSection } from './insights.js';
 
 /** One chart card: a card, a chart that fills the space, and a legend under it. */
 function chartCard({ title, subtitle, iconName, accent, chartClass = '' }) {
@@ -153,8 +155,13 @@ export function render(container) {
   const aiTop = h('div', { class: 'grid grid-cols-1 lg:grid-cols-2 gap-4' }, [updatePanel.el, askCard]);
   const priorities = createPrioritiesPanel();
   const needs = createNeedsPanel();
+  const insights = createInsightsSection();   // the whole former "AI Insights" tab, embedded here
 
-  container.append(filterBar, aiTop, tileRow, grid, priorities.el, needs.el);
+  /* a small follow-ups "overdue / due today" summary — the counts live here; the reminders
+     themselves live in Investors → Follow-ups (one click away). */
+  const fuSummary = h('div', { class: 'fu-overview hidden' });
+
+  container.append(filterBar, aiTop, tileRow, fuSummary, grid, priorities.el, needs.el, insights.el);
   refreshIcons(container);
 
   const widgets = [funnel, types, countries, sources];
@@ -191,10 +198,34 @@ export function render(container) {
     }
   }
 
+  function renderFuSummary(rows) {
+    let overdue = 0; let today = 0; let week = 0;
+    for (const c of rows) {
+      if (isClosed(c) || c.dormant) continue;
+      const d = daysFromToday(c.nextActionAt);
+      if (d == null) continue;
+      if (d < 0) overdue += 1; else if (d === 0) today += 1; else if (d <= 7) week += 1;
+    }
+    if (!overdue && !today && !week) { fuSummary.classList.add('hidden'); return; }
+    fuSummary.classList.remove('hidden');
+    fuSummary.replaceChildren(
+      h('div', { class: 'fu-ov-l' }, [icon('calendar-clock', 'size-4'), h('span', { class: 'fu-ov-t', text: 'Follow-ups' })]),
+      h('div', { class: 'fu-ov-stats' }, [
+        h('span', { class: `fu-ov-stat${overdue ? ' fu-ov-overdue' : ''}` }, [h('b', { text: String(overdue) }), h('span', { text: 'overdue' })]),
+        h('span', { class: `fu-ov-stat${today ? ' fu-ov-today' : ''}` }, [h('b', { text: String(today) }), h('span', { text: 'due today' })]),
+        h('span', { class: 'fu-ov-stat' }, [h('b', { text: String(week) }), h('span', { text: 'this week' })]),
+      ]),
+      h('button', { class: 'btn btn-quiet btn-sm ml-auto', type: 'button', onClick: () => goToFollowups() },
+        [h('span', { text: 'Open follow-ups' }), icon('arrow-right', 'size-3.5')]),
+    );
+    refreshIcons(fuSummary);
+  }
+
   function update(state) {
     showFilterBar(state);
     priorities.update(state);
     needs.update(state);
+    insights.update(state);                                        // the embedded AI-intelligence section
     aiTop.classList.toggle('hidden', state.mode === 'preview');   // AI needs the live database
 
     if (state.status === 'loading') return setAll('loading');
@@ -210,8 +241,11 @@ export function render(container) {
         widget.setState('empty', { message });
         widget.note('');
       }
+      fuSummary.classList.add('hidden');
       return;
     }
+
+    renderFuSummary(rows);
 
     /* numbers */
     const numbers = headlineNumbers(rows);
@@ -282,6 +316,7 @@ export function render(container) {
     update,
     destroy() {
       for (const widget of widgets) widget.destroy();
+      insights.destroy();
     },
   };
 }
