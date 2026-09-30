@@ -2,16 +2,16 @@
  * tabs/insights.js — relationship intelligence (sample AI output for now).
  *
  * Joins the loaded contacts with AI-scored reply data (via ai-insights.js) and
- * surfaces: a priority queue to respond to, a sentiment + interest overview,
- * ready-to-review suggested replies, and a warm-but-quiet re-touch list. All
- * scoring lives in ai-insights.js, so real reply-reading swaps in with no UI change.
+ * surfaces: a priority queue to respond to, a sentiment + interest overview, and a
+ * warm-but-quiet re-touch list. The reply drafts themselves are NOT shown here — they
+ * live only in the Inbox tab. All scoring lives in ai-insights.js, so real reply-reading
+ * swaps in with no UI change.
  */
 import { PALETTE } from '../config.js';
 import * as store from '../store.js';
 import { card, h, icon, refreshIcons, toast } from '../ui.js';
 import { donutOption, barOption } from '../charts.js';
-import { formatNumber, formatDate, escapeHtml } from '../util.js';
-import { colorOf } from '../colors.js';
+import { formatNumber, formatDate } from '../util.js';
 import { createChartCard } from '../components/chartcard.js';
 import { createSourceNote, readJsonFile } from '../components/source-note.js';
 import { openDrawer } from '../components/drawer.js';
@@ -19,87 +19,31 @@ import {
   insightsSource, joinInsights, priorityQueue, quietWarm, sentimentSplit, scoreBuckets, priorityColor,
 } from '../ai-insights.js';
 
-/* copy-to-clipboard with graceful fallback */
-async function copyText(text, btn) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = h('textarea', { style: 'position:fixed;opacity:0' }); ta.value = text;
-    document.body.append(ta); ta.select();
-    try { document.execCommand('copy'); } catch { /* ignore */ }
-    ta.remove();
-  }
-  btn.classList.add('done');
-  btn.querySelector('span').textContent = 'Copied';
-  setTimeout(() => { btn.classList.remove('done'); btn.querySelector('span').textContent = 'Copy reply'; }, 1800);
-}
-
-function draftBox(text) {
-  const copyBtn = h('button', { class: 'copy-btn', type: 'button' }, [icon('copy', 'size-3.5'), h('span', { text: 'Copy reply' })]);
-  copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyText(text, copyBtn); });
-  return h('div', { class: 'draft-box' }, [
-    h('div', { class: 'dh' }, [icon('sparkles', 'size-3'), 'AI-drafted reply — review before sending']),
-    h('div', { text }),
-    copyBtn,
-  ]);
-}
-
-/** An expandable block: a header row that toggles a drafted reply open. */
-function expandable(headerNodes, snippet, draft, extraClass = '') {
-  const wrap = h('div', { class: `draft-wrap ${extraClass}` }, [h('div', { class: 'draft-inner' }, [draftBox(draft)])]);
-  const toggle = h('button', { class: 'link-btn', type: 'button' },
-    [icon('chevron-right', 'size-3.5 chev-r'), h('span', { text: 'Suggested reply' })]);
-  const box = h('div', { class: 'xpand' }, [
-    ...headerNodes,
-    snippet ? h('div', { class: 'snippet quote', text: snippet }) : null,
-    h('div', { class: 'pcard-actions' }, [toggle]),
-    wrap,
-  ]);
-  toggle.addEventListener('click', () => box.classList.toggle('open'));
-  return box;
-}
+/* This section shows reply-scored INTELLIGENCE (who to respond to, who's gone quiet), not the
+   reply drafts themselves — those (and their editable "suggested reply") live only in the Inbox
+   tab. So no draft box / "Copy reply" is rendered here; each card links to the profile instead. */
 
 function priorityCard(c) {
-  const box = h('div', { class: 'pcard', style: `--c:${priorityColor(c.ai.priority)}` }, [
-    expandable([
-      h('div', { class: 'pcard-head' }, [
-        h('div', { class: 'min-w-0' }, [
-          h('div', { class: 'pcard-name', text: c.fullName }),
-          h('div', { class: 'pcard-org', text: c.organisation || c.designation || c.entityType }),
-        ]),
-        h('div', { class: 'pcard-score' }, [
-          h('div', { class: 'n', text: formatNumber(c.ai.interestScore) }),
-          h('div', { class: 'l', text: 'interest' }),
-        ]),
+  const profileBtn = h('button', { class: 'link-btn', type: 'button', style: 'margin-left:auto;color:var(--ink-3)' },
+    [icon('panel-right-open', 'size-3.5'), h('span', { text: 'Profile' })]);
+  profileBtn.addEventListener('click', (e) => { e.stopPropagation(); openDrawer(c); });
+  return h('div', { class: 'pcard', style: `--c:${priorityColor(c.ai.priority)}` }, [
+    h('div', { class: 'pcard-head' }, [
+      h('div', { class: 'min-w-0' }, [
+        h('div', { class: 'pcard-name', text: c.fullName }),
+        h('div', { class: 'pcard-org', text: c.organisation || c.designation || c.entityType }),
       ]),
-      h('span', { class: 'reason-badge' }, [icon('flag', 'size-3.5'), `${c.ai.reason}`]),
-      c.ai.relationshipSummary ? h('div', { class: 'ai-line', text: c.ai.relationshipSummary }) : null,
-      c.ai.suggestedNextStep ? h('div', { class: 'ai-next' }, [icon('arrow-right', 'size-3.5'), h('span', { text: c.ai.suggestedNextStep })]) : null,
-    ], c.ai.lastReplySnippet, c.ai.suggestedReply),
-  ]);
-  // opening the profile: a small link under the name
-  box.querySelector('.pcard-actions').append(
-    (() => {
-      const b = h('button', { class: 'link-btn', type: 'button', style: 'margin-left:auto;color:var(--ink-3)' },
-        [icon('panel-right-open', 'size-3.5'), h('span', { text: 'Profile' })]);
-      b.addEventListener('click', (e) => { e.stopPropagation(); openDrawer(c); });
-      return b;
-    })(),
-  );
-  return box;
-}
-
-function replyItem(c) {
-  return h('div', { class: 'reply-item' }, [
-    expandable([
-      h('div', { class: 'reply-head' }, [
-        h('span', { class: 'nm', text: c.fullName }),
-        h('span', { class: 'og', text: c.organisation ? `· ${c.organisation}` : '' }),
-        h('span', { class: 'cat-chip ml-auto', style: `--c:${colorOf('entityType', c.entityType)}` },
-          [h('span', { class: 'dot' }), h('span', { class: 'lbl', text: c.entityType })]),
+      h('div', { class: 'pcard-score' }, [
+        h('div', { class: 'n', text: formatNumber(c.ai.interestScore) }),
+        h('div', { class: 'l', text: 'interest' }),
       ]),
-    ], c.ai.lastReplySnippet, c.ai.suggestedReply),
-  ]);
+    ]),
+    h('span', { class: 'reason-badge' }, [icon('flag', 'size-3.5'), `${c.ai.reason}`]),
+    c.ai.relationshipSummary ? h('div', { class: 'ai-line', text: c.ai.relationshipSummary }) : null,
+    c.ai.suggestedNextStep ? h('div', { class: 'ai-next' }, [icon('arrow-right', 'size-3.5'), h('span', { text: c.ai.suggestedNextStep })]) : null,
+    c.ai.lastReplySnippet ? h('div', { class: 'snippet quote', text: c.ai.lastReplySnippet }) : null,
+    h('div', { class: 'pcard-actions' }, [profileBtn]),
+  ].filter(Boolean));
 }
 
 function quietItem(c) {
@@ -179,21 +123,12 @@ export function createInsightsSection() {
   });
   priorityCardEl.content.append(pcards);
 
-  /* suggested replies + quiet */
-  const replies = h('div', {});
-  const repliesCard = card({ title: 'Ready-to-review replies', subtitle: 'AI drafts you can copy and send.', iconName: 'mail', accent: PALETTE[0] });
-  repliesCard.content.append(replies);
-
+  /* interested but quiet (the reply drafts themselves live only in the Inbox tab) */
   const quiet = h('div', {});
   const quietCard = card({ title: 'Interested but quiet', subtitle: 'Warm people who have gone silent — a gentle nudge.', iconName: 'moon', accent: PALETTE[3] });
   quietCard.content.append(quiet);
 
-  const bottom = h('div', { class: 'grid grid-cols-1 lg:grid-cols-12 gap-4 items-start' }, [
-    h('div', { class: 'lg:col-span-7' }, [repliesCard.el]),
-    h('div', { class: 'lg:col-span-5' }, [quietCard.el]),
-  ]);
-
-  container.append(topNote, overview, priorityCardEl.el, bottom);
+  container.append(topNote, overview, priorityCardEl.el, quietCard.el);
   refreshIcons(container);
 
   let latestState = null;
@@ -213,13 +148,12 @@ export function createInsightsSection() {
 
     if (!contactsReady || s.status === 'loading') {
       for (const w of [sentiment, buckets]) w.setState('loading');
-      priorityCardEl.setState('loading'); repliesCard.setState('loading'); quietCard.setState('loading');
+      priorityCardEl.setState('loading'); quietCard.setState('loading');
       return;
     }
     if (s.status === 'error') {
       for (const w of [sentiment, buckets]) w.setState('error', { message: s.error });
-      priorityCardEl.setState('error', { message: s.error });
-      repliesCard.setState('error', { message: s.error }); quietCard.setState('error', { message: s.error });
+      priorityCardEl.setState('error', { message: s.error }); quietCard.setState('error', { message: s.error });
       return;
     }
 
@@ -229,8 +163,7 @@ export function createInsightsSection() {
         ? 'No AI scores yet — click “Refresh all AI” above, or open a contact and choose “Refresh AI”.'
         : 'No AI-scored replies match these contacts yet.';
       for (const w of [sentiment, buckets]) w.setState('empty', { message: msg });
-      priorityCardEl.setState('empty', { message: msg });
-      repliesCard.setState('empty', { message: msg }); quietCard.setState('empty', { message: msg });
+      priorityCardEl.setState('empty', { message: msg }); quietCard.setState('empty', { message: msg });
       return;
     }
 
@@ -247,12 +180,6 @@ export function createInsightsSection() {
       queue.length ? `${queue.length} ${queue.length === 1 ? 'person needs' : 'people need'} a reply soon.` : 'Nothing urgent right now.';
     pcards.replaceChildren(...(queue.length ? queue.map(priorityCard)
       : [h('p', { class: 't-caption py-4 text-center', text: 'No high-priority replies waiting — nicely on top of it.' })]));
-
-    /* suggested replies (everyone with a draft, priority first) */
-    const withDrafts = [...list].filter((c) => c.ai.suggestedReply)
-      .sort((a, b) => (b.ai.isPriority - a.ai.isPriority) || (b.ai.interestScore - a.ai.interestScore));
-    repliesCard.setState('ready');
-    replies.replaceChildren(...withDrafts.slice(0, 12).map(replyItem));
 
     /* interested but quiet */
     const q = quietWarm(list);
