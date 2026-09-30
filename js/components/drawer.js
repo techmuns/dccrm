@@ -370,14 +370,71 @@ function lpSection(contact) {
   ].filter(Boolean));
 }
 
-function renderView(contact, opts = {}) {
+/* ---------- inline-editable fields (the live profile is the ONE editor) ---------- */
+
+/** The drawer header: name, organisation and the status chips. Re-rendered after an
+ *  inline field save so name / org / stage-heat chips always reflect the record. */
+function renderHead(contact) {
   refs.head.replaceChildren(...[
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
     h('div', { class: 'drawer-name', text: contact.fullName || 'Unnamed contact' }),
     contact.organisation ? h('div', { class: 'drawer-org', text: contact.organisation }) : null,
     headChips(contact),
   ].filter(Boolean));
+  refreshIcons(refs.head);
+}
 
+/** One labeled field, editable in place. Saves on change via saveField({field: value}).
+ *  kind: { type:'text'|'email'|'date'|'textarea', options:[…], suggest:bool, placeholder, wide } */
+function editField(saveField, contact, label, fieldName, kind = {}) {
+  const { type = 'text', options = null, suggest = false, placeholder = '', wide = false } = kind;
+  const val = contact[fieldName];
+  let el; let datalist = null;
+  if (options) {
+    el = h('select', { class: 'field-input' }, [
+      h('option', { value: '', text: '—', selected: val ? null : '' }),
+      ...options.map((o) => h('option', { value: o, text: o, selected: o === val ? '' : null })),
+    ]);
+    if (val && !options.includes(val)) el.prepend(h('option', { value: val, text: val, selected: '' }));
+    el.addEventListener('change', () => saveField({ [fieldName]: el.value }));
+  } else if (type === 'textarea') {
+    el = h('textarea', { class: 'field-input', rows: '3', placeholder }); el.value = val || '';
+    el.addEventListener('change', () => saveField({ [fieldName]: el.value.trim() }));
+  } else if (type === 'date') {
+    el = h('input', { class: 'field-input', type: 'date', value: val || '' });
+    el.addEventListener('change', () => saveField({ [fieldName]: el.value }));
+  } else {
+    const listId = suggest ? `dl-drawer-${fieldName}` : null;
+    el = h('input', { class: 'field-input', type, value: val || '', placeholder, ...(listId ? { list: listId } : {}) });
+    if (listId) datalist = h('datalist', { id: listId }, suggestionsFor(fieldName).map((sv) => h('option', { value: sv })));
+    el.addEventListener('change', () => saveField({ [fieldName]: el.value.trim() }));
+  }
+  return h('div', { class: `drawer-field drawer-field--edit${wide ? ' drawer-field--wide' : ''}` }, [
+    h('div', { class: 'k', text: label }),
+    h('div', { class: 'v' }, [el, datalist].filter(Boolean)),
+  ]);
+}
+
+/** A section of inline-editable fields. */
+function editSection(saveField, contact, title, iconName, specs) {
+  return h('div', { class: 'drawer-section' }, [
+    h('h3', {}, [icon(iconName, 'size-3.5'), title]),
+    ...specs.map((s) => editField(saveField, contact, s.label, s.field, s.kind || {})),
+  ]);
+}
+
+function renderView(contact, opts = {}) {
+  const live = store.isLive();
+  renderHead(contact);
+
+  /* The live profile edits every field in place: each change saves immediately and the
+     header repaints. This is the single editor for one contact (grid = bulk; AI = preview). */
+  const saveField = async (patch) => {
+    const r = await store.updateContact(contact.id, patch, { optimistic: false, source: 'Profile edit' });
+    if (!r.ok) { toast(r.error || 'Could not save that change.', 'warn'); return; }
+    Object.assign(contact, r.contact);
+    renderHead(contact);
+  };
   const dueDays = daysFromToday(contact.nextActionAt);
   const nextValue = contact.nextActionDate
     ? `${formatDate(contact.nextActionAt)}${dueDays < 0 ? ` · ${Math.abs(dueDays)} day${Math.abs(dueDays) === 1 ? '' : 's'} overdue`
@@ -401,9 +458,58 @@ function renderView(contact, opts = {}) {
     h('div', { class: 'replies-host' }),
   ]);
 
-  refs.body.replaceChildren(...[
-    store.isLive() ? aiPanel(contact) : null,
-    store.isLive() ? draftPanel(contact, { autoOpen: !!opts.draft }) : null,
+  // LIVE: the profile edits every field in place — the single editor for one contact.
+  const liveBody = () => [
+    aiPanel(contact),
+    draftPanel(contact, { autoOpen: !!opts.draft }),
+    editSection(saveField, contact, 'Identity', 'user', [
+      { label: 'Full name', field: 'fullName' },
+      { label: 'Entity type', field: 'entityType', kind: { suggest: true } },
+      { label: 'Role', field: 'role', kind: { suggest: true } },
+      { label: 'Organisation', field: 'organisation', kind: { suggest: true } },
+      { label: 'Designation', field: 'designation' },
+    ]),
+    editSection(saveField, contact, 'Contact channels', 'at-sign', [
+      { label: 'Email', field: 'email', kind: { type: 'email' } },
+      { label: 'Phone', field: 'phone' },
+      { label: 'Alt phone', field: 'altPhone' },
+      { label: 'WhatsApp', field: 'whatsapp' },
+      { label: 'WhatsApp opt-in', field: 'whatsappOptIn', kind: { options: ['Yes', 'No'] } },
+    ]),
+    editSection(saveField, contact, 'Location', 'map-pin', [
+      { label: 'Country', field: 'country', kind: { suggest: true } },
+      { label: 'City', field: 'city', kind: { suggest: true } },
+    ]),
+    pipelinePanel(contact),   // Stage · Heat · Dormant · deal terms · Close — inline, gated
+    editSection(saveField, contact, 'Investment', 'briefcase', [
+      { label: 'Tier', field: 'tier', kind: { suggest: true } },
+      { label: 'Priority', field: 'priority', kind: { suggest: true } },
+    ]),
+    lpSection(contact),   // Phase 11 — LP book panel / top-up link
+    editSection(saveField, contact, 'Follow-up', 'calendar-check', [
+      { label: 'Last contact', field: 'lastContact', kind: { type: 'date' } },
+      { label: 'Next action', field: 'nextAction' },
+      { label: 'Next action date', field: 'nextActionDate', kind: { type: 'date' } },
+      { label: 'Relationship owner', field: 'relationshipOwner', kind: { suggest: true } },
+    ]),
+    editSection(saveField, contact, 'Source', 'route', [
+      { label: 'Source / channel', field: 'source', kind: { suggest: true } },
+      { label: 'Referred by', field: 'referredBy', kind: { suggest: true } },
+      { label: 'Signal / tags', field: 'signal' },
+    ]),
+    editSection(saveField, contact, 'Notes', 'sticky-note', [
+      { label: 'Notes', field: 'notes', kind: { type: 'textarea', wide: true } },
+      { label: 'Rough notes for Raghav', field: 'roughNotes', kind: { type: 'textarea', wide: true } },
+    ]),
+    repliesSection,
+    tagsSection,
+    followupPlan(contact),
+    tasksSection,
+    activitySection,
+  ];
+
+  // PREVIEW (no database connected): read-only.
+  const previewBody = () => [
     section('Identity', 'user', [
       field('Full name', contact.fullName),
       field('Entity type', contact.entityType),
@@ -422,7 +528,7 @@ function renderView(contact, opts = {}) {
       field('Country', contact.country),
       field('City', contact.city),
     ]),
-    store.isLive() ? pipelinePanel(contact) : section('Pipeline', 'git-branch', [
+    section('Pipeline', 'git-branch', [
       field('Stage', isClosed(contact) ? `Closed — ${CLOSED_LABELS[contact.closedStatus] || ''}` : contact.stage),
       field('Heat', contact.heat),
       field('Dormant', contact.dormant ? 'Yes' : ''),
@@ -433,11 +539,6 @@ function renderView(contact, opts = {}) {
       field('Tier', contact.tier),
       field('Priority', contact.priority),
     ]),
-    store.isLive() ? section('Investment', 'briefcase', [
-      field('Tier', contact.tier),
-      field('Priority', contact.priority),
-    ]) : null,
-    store.isLive() ? lpSection(contact) : null,   // Phase 11 — LP book panel / top-up link
     section('Follow-up', 'calendar-check', [
       field('Last contact', contact.lastContact ? formatDate(contact.lastContactAt) : ''),
       field('Next action', contact.nextAction),
@@ -460,26 +561,21 @@ function renderView(contact, opts = {}) {
         h('div', { class: 'v', text: contact.roughNotes }),
       ]) : null,
     ]) : null,
-    store.isLive() ? repliesSection : null,
-    store.isLive() ? tagsSection : null,
-    store.isLive() ? followupPlan(contact) : null,
-    store.isLive() ? tasksSection : null,
     activitySection,
-  ].filter(Boolean));
+  ];
 
-  /* footer: timeline (any real contact) + edit / delete (live only) + quick contact actions */
+  refs.body.replaceChildren(...(live ? liveBody() : previewBody()).filter(Boolean));
+
+  /* footer: timeline (any real contact) + delete (live) or email (preview).
+     Editing is inline in the sections above — there is no separate Edit form. */
   const footChildren = [];
   if (contact.id != null) {
     footChildren.push(h('button', { class: 'btn btn-quiet', type: 'button', title: 'Open the full relationship timeline',
       onClick: () => openTimeline(contact) }, [icon('history', 'size-4'), h('span', { class: 'hidden sm:inline', text: 'Timeline' })]));
   }
-  if (store.isLive()) {
-    footChildren.push(
-      h('button', { class: 'btn btn-primary', type: 'button', style: 'flex:1', onClick: () => renderEdit(contact, { create: false }) },
-        [icon('pencil', 'size-4'), 'Edit']),
-      h('button', { class: 'btn btn-danger', type: 'button', title: 'Delete contact', onClick: () => confirmDelete(contact) },
-        [icon('trash-2', 'size-4')]),
-    );
+  if (live) {
+    footChildren.push(h('button', { class: 'btn btn-danger', type: 'button', title: 'Delete contact', style: 'margin-left:auto',
+      onClick: () => confirmDelete(contact) }, [icon('trash-2', 'size-4'), h('span', { class: 'hidden sm:inline', text: 'Delete' })]));
   } else if (contact.email) {
     footChildren.push(h('a', { class: 'btn btn-primary', href: `mailto:${encodeURIComponent(contact.email)}`, style: 'flex:1' },
       [icon('mail', 'size-4'), 'Email']));
@@ -489,7 +585,7 @@ function renderView(contact, opts = {}) {
 
   refreshIcons(refs.head); refreshIcons(refs.body); refreshIcons(refs.foot);
 
-  if (store.isLive() && contact.id != null) {
+  if (live && contact.id != null) {
     loadDetail(contact, {
       tags: tagsSection.querySelector('.tags-host'),
       tasks: tasksSection.querySelector('.tasks-host'),
@@ -883,12 +979,16 @@ function inputFor(field, value, inputs) {
   ]);
 }
 
-function renderEdit(contact, { create }) {
+/* The ONLY form in the drawer: adding a brand-new contact (there's no record to edit in
+   place yet). Editing an existing contact happens inline in renderView — no separate form. */
+function renderCreateForm() {
+  const contact = {};
+  for (const f of FIELD_ORDER) contact[f] = '';
   const inputs = {};
   refs.head.replaceChildren(
     h('button', { class: 'drawer-close', type: 'button', 'aria-label': 'Close', onClick: close }, [icon('x', 'size-4')]),
-    h('div', { class: 'drawer-name', text: create ? 'New contact' : `Edit ${contact.fullName || 'contact'}` }),
-    h('div', { class: 'drawer-org', text: create ? 'Fill in what you know — only one of name, email or organisation is required.' : '' }),
+    h('div', { class: 'drawer-name', text: 'New contact' }),
+    h('div', { class: 'drawer-org', text: 'Fill in what you know — only one of name, email or organisation is required.' }),
   );
 
   const groups = [
@@ -906,10 +1006,8 @@ function renderEdit(contact, { create }) {
       h('div', { class: 'form-grid' }, fields.map((f) => inputFor(f, contact[f], inputs))),
     ])));
 
-  const save = h('button', { class: 'btn btn-primary', type: 'button', style: 'flex:1' },
-    [icon('check', 'size-4'), create ? 'Create contact' : 'Save changes']);
-  const cancel = h('button', { class: 'btn btn-quiet', type: 'button', text: 'Cancel',
-    onClick: () => (create ? close() : renderView(contact)) });
+  const save = h('button', { class: 'btn btn-primary', type: 'button', style: 'flex:1' }, [icon('check', 'size-4'), 'Create contact']);
+  const cancel = h('button', { class: 'btn btn-quiet', type: 'button', text: 'Cancel', onClick: close });
 
   save.addEventListener('click', async () => {
     const payload = {};
@@ -918,11 +1016,11 @@ function renderEdit(contact, { create }) {
       toast('Add at least a name, an email or an organisation.', 'warn'); return;
     }
     save.disabled = true;
-    const res = create ? await store.createContact(payload) : await store.updateContact(contact.id, payload, { optimistic: false });
+    const res = await store.createContact(payload);
     save.disabled = false;
     if (!res.ok) { toast(res.error || 'Could not save.', 'error'); return; }
-    toast(create ? 'Contact added.' : 'Changes saved.', 'good');
-    renderView(res.contact);
+    toast('Contact added.', 'good');
+    renderView(res.contact);   // straight into the inline-editable profile
   });
 
   refs.foot.replaceChildren(cancel, save);
@@ -967,9 +1065,7 @@ export function openDrawer(contact, opts = {}) {
 export function openNewContact() {
   if (!refs) build();
   lastFocus = document.activeElement;
-  const blank = {};
-  for (const f of FIELD_ORDER) blank[f] = '';
-  renderEdit(blank, { create: true });
+  renderCreateForm();
   refs.backdrop.classList.add('open');
   refs.panel.classList.add('open');
   refs.backdrop.removeAttribute('aria-hidden');

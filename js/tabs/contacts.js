@@ -13,9 +13,8 @@
  * Everything here is composed from shared pieces: the FilterBar, the DataTable, the
  * DetailDrawer, the follow-ups view, and the Phase 1 data + colour layers.
  */
-import { PALETTE, ALL_STAGES, HEAT_VALUES, HEAT_STAGES, CLOSED_LABELS } from '../config.js';
+import { PALETTE, ALL_STAGES, HEAT_VALUES, CLOSED_LABELS } from '../config.js';
 import { h, icon, refreshIcons, toast } from '../ui.js';
-import { colorOf } from '../colors.js';
 import { formatNumber, tidy, daysFromToday } from '../util.js';
 import { isClosed } from '../data.js';
 import { contactsToCsv } from '../filters.js';
@@ -33,85 +32,21 @@ import { takeContactsPreset, goToCompose, takeInvestorsView } from '../nav.js';
 import { render as renderFollowups } from './followups.js';
 import * as store from '../store.js';
 
-/** Push a single-field change to the database, optimistically. */
-async function quickEdit(contact, patch) {
-  const res = await store.updateContact(contact.id, patch);
-  if (!res.ok) toast(res.error || 'Could not save that change.', 'warn');
-}
+/* The View table is READ-ONLY. Each field is edited in exactly one place: click a row to open
+   the profile (single-contact edits), or switch to Edit (grid) for spreadsheet / bulk edits.
+   This removes the scattered inline row editors so there's no confusion over where Stage
+   (and every other field) actually changes. */
 
-/** A compact <select> chip for Stage, coloured to match the stage. */
-function stageEditor(contact) {
-  const sel = h('select', {
-    class: 'cell-edit stage-edit', 'aria-label': 'Stage',
-    style: `--c:${colorOf('stage', contact.stage)}`,
-  }, ALL_STAGES.map((st) => h('option', { value: st, text: st, selected: st === contact.stage ? '' : null })));
-  if (!contact.stage) sel.prepend(h('option', { value: '', text: '—', selected: '' }));
-  stopBubbling(sel);
-  sel.addEventListener('change', () => {
-    sel.style.setProperty('--c', colorOf('stage', sel.value));
-    quickEdit(contact, { stage: sel.value });
-  });
-  return sel;
-}
-
-/** The Stage cell: a Closed chip for closed records, else the inline stage editor,
- *  with a small Dormant badge appended when the record is parked. */
+/** The Stage cell: a Closed chip for closed records, else a read-only stage chip, with a
+ *  small Dormant badge appended when the record is parked. Click the row to edit. */
 function stageCell(contact) {
   if (isClosed(contact)) {
     return h('span', { class: 'closed-chip', title: 'Closed — open the profile to reopen' },
       [icon('circle-slash', 'size-3'), h('span', { text: CLOSED_LABELS[contact.closedStatus] || 'Closed' })]);
   }
-  const el = store.isLive() ? stageEditor(contact) : chipCell('stage', contact.stage);
+  const el = chipCell('stage', contact.stage);
   if (!contact.dormant) return el;
   return h('div', { class: 'stage-cell' }, [el, h('span', { class: 'dormant-badge', title: 'Dormant', text: 'Zzz' })]);
-}
-
-/** A compact Heat <select>, shown only where Heat applies (early stages, not closed). */
-function heatEditor(contact) {
-  if (isClosed(contact) || !HEAT_STAGES.includes(contact.stage)) return h('span', { class: 'dt-muted', text: '—' });
-  const sel = h('select', {
-    class: 'cell-edit heat-edit', 'aria-label': 'Heat', style: `--c:${colorOf('heat', contact.heat)}`,
-  }, [h('option', { value: '', text: '—', selected: contact.heat ? null : '' }),
-    ...HEAT_VALUES.map((hv) => h('option', { value: hv, text: hv, selected: hv === contact.heat ? '' : null }))]);
-  stopBubbling(sel);
-  sel.addEventListener('change', () => {
-    sel.style.setProperty('--c', colorOf('heat', sel.value));
-    quickEdit(contact, { heat: sel.value });
-  });
-  return sel;
-}
-
-/** A compact <select> for the Relationship owner, options drawn from the data. */
-function ownerEditor(contact) {
-  const owners = new Set(store.getState().contacts.map((c) => tidy(c.relationshipOwner)).filter(Boolean));
-  if (contact.relationshipOwner) owners.add(contact.relationshipOwner);
-  const sel = h('select', { class: 'cell-edit owner-edit', 'aria-label': 'Relationship owner' }, [
-    h('option', { value: '', text: '—', selected: contact.relationshipOwner ? null : '' }),
-    ...[...owners].sort((a, b) => a.localeCompare(b)).map((o) =>
-      h('option', { value: o, text: o, selected: o === contact.relationshipOwner ? '' : null })),
-  ]);
-  stopBubbling(sel);
-  sel.addEventListener('change', () => quickEdit(contact, { relationshipOwner: sel.value }));
-  return sel;
-}
-
-/** A date input for Next action date; turns red when overdue. */
-function nextDateEditor(contact) {
-  const overdue = contact.nextActionAt && contact.nextActionAt < startOfToday();
-  const input = h('input', {
-    class: `cell-edit date-edit${overdue ? ' is-overdue' : ''}`, type: 'date',
-    value: contact.nextActionDate || '', 'aria-label': 'Next action date',
-  });
-  stopBubbling(input);
-  input.addEventListener('change', () => quickEdit(contact, { nextActionDate: input.value }));
-  return input;
-}
-
-const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-
-/* keep clicks on an inline editor from opening the row's drawer */
-function stopBubbling(el) {
-  for (const type of ['click', 'mousedown', 'keydown']) el.addEventListener(type, (e) => e.stopPropagation());
 }
 
 /** A small row-action button that opens the contact's timeline (without opening the drawer). */
@@ -177,15 +112,15 @@ export function render(container) {
       render: (r) => stageCell(r) },
     { key: 'heat', label: 'Heat', cellClass: 'col-heat',
       sortValue: (r) => { const i = HEAT_VALUES.indexOf(r.heat); return i < 0 ? 9 : i; },
-      render: (r) => (store.isLive() ? heatEditor(r) : chipCell('heat', r.heat)) },
+      render: (r) => chipCell('heat', r.heat) },
     { key: 'relationshipOwner', label: 'Owner', cellClass: 'col-owner',
       sortValue: (r) => r.relationshipOwner?.toLowerCase(),
-      render: (r) => (store.isLive() ? ownerEditor(r) : textCell(r.relationshipOwner)) },
+      render: (r) => textCell(r.relationshipOwner) },
     { key: 'lastContact', label: 'Last contact', cellClass: 'col-last', defaultSortDir: 'desc',
       sortValue: (r) => r.lastContactAt, render: (r) => dateCell(r.lastContactAt) },
     { key: 'nextActionDate', label: 'Next action', cellClass: 'col-next', defaultSortDir: 'asc',
       sortValue: (r) => r.nextActionAt,
-      render: (r) => (store.isLive() ? nextDateEditor(r) : dateCell(r.nextActionAt, { markOverdue: true })) },
+      render: (r) => dateCell(r.nextActionAt, { markOverdue: true }) },
     { key: '_timeline', label: '', cellClass: 'col-actions', sortable: false, render: timelineAction },
   ];
 
