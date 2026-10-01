@@ -17,6 +17,7 @@
  *      IMAP_MAILBOX=INBOX).
  */
 import { readFile } from 'node:fs/promises';
+import { automatedSenderReason } from '../functions/api/_ai.mjs';   // ONE shared sender-filter rule
 
 const WORKER = (process.env.WORKER_URL || '').replace(/\/+$/, '');
 const SECRET = process.env.INGEST_SECRET || '';
@@ -69,7 +70,7 @@ async function runLive() {
   });
   await client.connect();
   const lock = await client.getMailboxLock(process.env.IMAP_MAILBOX || 'INBOX');
-  let processed = 0; let failed = 0;
+  let processed = 0; let failed = 0; let skippedAuto = 0;
   try {
     const uids = await client.search({ seen: false }, { uid: true });
     console.log(`found ${uids.length} unseen message(s)`);
@@ -79,6 +80,18 @@ async function runLive() {
         const parsed = await simpleParser(msg.source);
         const sender = originalSender(parsed, IMAP_USER);
         if (!sender.email || !EMAIL_RE.test(sender.email)) throw new Error('no usable sender address');
+
+        // HARDENING: ignore automated / non-human senders (no-reply, mailer-daemon, Google
+        // security alerts, calendar invites, …). Don't POST them; mark Seen so the catcher
+        // mailbox isn't re-scanned forever. Logged so we can see exactly what was ignored.
+        const autoReason = automatedSenderReason(sender.email);
+        if (autoReason) {
+          console.log(`skipped automated sender ${sender.email} — ${autoReason} (uid ${uid})`);
+          await client.messageFlagsAdd({ uid }, ['\\Seen'], { uid: true });
+          skippedAuto += 1;
+          continue;
+        }
+
         const email = {
           fromEmail: sender.email,
           fromName: sender.name || '',
@@ -99,11 +112,11 @@ async function runLive() {
     lock.release();
     await client.logout();
   }
-  console.log(`done — processed ${processed}, failed ${failed}`);
+  console.log(`done — processed ${processed}, skipped(automated) ${skippedAuto}, failed ${failed}`);
 }
 
 async function runTest() {
-  console.log('TEST mode — no IMAP credentials; POSTing data/replies.sample.json as raw emails');
+  console.log('TEST mode — POSTing data/replies.sample.json as raw emails (opt-in via ALLOW_SAMPLE_INGEST)');
   const raw = JSON.parse(await readFile(new URL('../data/replies.sample.json', import.meta.url), 'utf8'));
   const list = Array.isArray(raw) ? raw : (raw.replies || []);
   const emails = list.map((r) => ({
@@ -113,13 +126,22 @@ async function runTest() {
     body: r.body || r.text || '',
     receivedAt: r.receivedAt || new Date().toISOString().slice(0, 10),
     messageId: r.messageId || null,
-  }));
+  })).filter((e) => {
+    const reason = automatedSenderReason(e.fromEmail);
+    if (reason) { console.log(`skipped automated sample sender ${e.fromEmail} — ${reason}`); return false; }
+    return true;
+  });
   console.log('ingested:', JSON.stringify(await postEmails(emails)));   // endpoint is idempotent by messageId
 }
 
 async function main() {
   if (!WORKER || !SECRET) throw new Error('WORKER_URL and INGEST_SECRET are required');
-  if (imapReady) await runLive(); else await runTest();
+  if (imapReady) { await runLive(); return; }
+  // No IMAP configured. The demo-sample POST is now OPT-IN only, so a production run with the
+  // inbox temporarily unconfigured never re-seeds the client's data with fictional replies.
+  if (process.env.ALLOW_SAMPLE_INGEST === '1') { await runTest(); return; }
+  console.log('No IMAP credentials and ALLOW_SAMPLE_INGEST is not set — nothing to do. '
+    + '(Set ALLOW_SAMPLE_INGEST=1 only for a local demo; never in production.)');
 }
 
 main().catch((e) => { console.error('FATAL:', e.message); process.exit(1); });
