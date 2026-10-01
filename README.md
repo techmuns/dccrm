@@ -138,6 +138,34 @@ It is a **static site** — no build step, no server, no backend.
   access on `file://`). Any static server works, e.g. `npx serve` or
   `python3 -m http.server`, then open the printed address.
 
+## Maintenance — clearing demo / junk data
+
+Two layers keep the live data to real, human investor mail only:
+
+- **The reader ignores automated senders.** `scripts/email-ingest.mjs` and the
+  `/api/replies/ingest` classifier share one rule (`automatedSenderReason` in
+  `functions/api/_ai.mjs`) and skip `no-reply@` / `noreply@` / `donotreply@` /
+  `mailer-daemon@` / `postmaster@` / `bounce(s)@` / `notifications@` / `notify@`
+  addresses, and Google system senders (`@accounts.google.com`, Google security /
+  calendar alerts). Skips are logged; genuine personal mail passes through. The
+  reader's sample-file TEST mode is now opt-in only (`ALLOW_SAMPLE_INGEST=1`), so a
+  run with the inbox temporarily unconfigured can never re-seed demo replies.
+
+- **A re-runnable cleanup action** removes anything that slipped in earlier:
+  seeded demo replies (`messageId` like `sample-reply…`), automated-sender replies,
+  and contacts auto-created from an automated sender. It never touches a real
+  investor contact or a genuine human reply.
+
+  ```bash
+  # dry run — prints exactly what WOULD be removed, deletes nothing
+  WORKER_URL=https://<your-pages-domain> INGEST_SECRET=<secret> node scripts/clean-junk.mjs
+  # actually remove it
+  WORKER_URL=https://<your-pages-domain> INGEST_SECRET=<secret> node scripts/clean-junk.mjs --apply
+  ```
+
+  The script calls `POST /api/admin/cleanup` (same `INGEST_SECRET` as the reader;
+  dry-run unless `?apply=1`), which returns a full report of what it matched.
+
 ## Upload your own sheet
 
 Click **Upload Sheet** (or drag a file anywhere onto the page) and choose an
@@ -222,11 +250,13 @@ functions/api/        The CRM API (Cloudflare Pages Functions)
   ai/refresh-all.js     POST — fire the bulk enrichment Action   ·   ai/pending.js · ai/result.js  (GHA_SECRET handshake)
   insights.js           GET — the AI Insights feed (enrichment + latest replies) keyed by email
   replies/ingest.js     POST analysed replies (INGEST_SECRET)    ·   replies/index.js  GET recent replies
+  admin/cleanup.js      POST — remove demo/junk data (INGEST_SECRET, dry-run unless ?apply=1)
   campaigns/index.js    GET campaigns · campaigns/import.js POST upsert · campaigns/[id].js DELETE
 scripts/                GitHub Actions runners (patient Bedrock; no Worker timeout)
   _bedrock.mjs          Patient Bedrock Converse (long retry waves) — mirrors paramemo
   ai-enrich.mjs         Bulk contact scoring   ·   email-ingest.mjs  IMAP → Bedrock → /api/replies/ingest
-.github/workflows/      ai-enrich.yml (dispatch + nightly) · email-ingest.yml (every 15 min)
+  clean-junk.mjs        Re-runnable "clear demo/junk data" action (calls /api/admin/cleanup)
+.github/workflows/      ai-enrich.yml (dispatch + nightly) · email-ingest.yml (every 5 min)
 data/
   contacts.sample.json    ~120 example contacts (the fallback dataset)
   campaigns.sample.json   ~10 example email campaigns

@@ -19,7 +19,7 @@
  */
 import { json, fail, noDb, now, ensureSchema, currentUser, gateViolation, STAGES, TAG_PALETTE } from '../_lib.js';
 import { pickSecret, bearerAuthed, bedrockConfigured, callBedrock } from '../_bedrock.js';
-import { INBOUND_PROMPT, parseInbound, heuristicInbound, INBOUND_CATEGORIES } from '../_ai.mjs';
+import { INBOUND_PROMPT, parseInbound, heuristicInbound, INBOUND_CATEGORIES, automatedSenderReason } from '../_ai.mjs';
 
 const str = (v) => (v == null ? null : String(v).trim() || null);
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
@@ -58,10 +58,22 @@ export async function onRequestPost({ request, env }) {
 
   const who = currentUser(request);
   const useAi = bedrockConfigured(env);
-  const result = { ok: true, processed: 0, matched: 0, created: 0, skipped: 0, applied: 0, suggested: 0, items: [] };
+  const result = { ok: true, processed: 0, matched: 0, created: 0, skipped: 0, skippedAutomated: 0, applied: 0, suggested: 0, items: [] };
 
   for (const raw of rows) {
     const fromEmail = (str(raw.fromEmail ?? raw.from) || '').toLowerCase() || null;
+
+    // HARDENING: ignore automated / non-human senders (no-reply, mailer-daemon, Google
+    // security alerts, calendar invites, …). Never classify, create a contact, or store a
+    // reply for these — only genuine investor emails get through. Logged so skips are visible.
+    const autoReason = automatedSenderReason(fromEmail);
+    if (autoReason) {
+      result.skippedAutomated += 1;
+      result.items.push({ fromEmail, skippedAutomated: true, reason: autoReason });
+      console.log(`[ingest] skipped automated sender ${fromEmail || '(no address)'} — ${autoReason}`);
+      continue;
+    }
+
     const fromName = str(raw.fromName);
     const subject = str(raw.subject);
     const emailBody = str(raw.body ?? raw.text ?? raw.snippet) || '';

@@ -227,6 +227,47 @@ export function heuristicInbound(email) {
   };
 }
 
+/* =====================================================================================
+ * Automated / non-human sender filter (reader hardening).
+ *
+ * Genuine investor emails come from a person. Automated system mail — no-reply addresses,
+ * mailer-daemon bounces, Google security alerts / 2-Step notices, calendar invites — must
+ * never be classified, never create a contact, and never land in the Inbox. Defined ONCE
+ * here (pure, dep-free) and imported by BOTH the ingest endpoint (functions/api/replies/
+ * ingest.js) and the reader (scripts/email-ingest.mjs), so the rule can't drift.
+ *
+ * Returns a short human-readable reason string for an automated sender (truthy), or '' for
+ * a genuine human sender.
+ * ===================================================================================== */
+
+// local-parts that are effectively always machine mailboxes (optionally with a +/-/._ suffix,
+// e.g. "no-reply+tag", "bounces-123").
+const AUTOMATED_LOCAL_RE =
+  /^(?:no[._-]?reply|do[._-]?not[._-]?reply|donotreply|mailer[-_]?daemon|postmaster|bounces?|notifications?|notify|auto[-_]?(?:reply|responder)|calendar[-_]?notification)(?:[._+-].*)?$/;
+
+// whole domains that only ever send automated/system mail (e.g. Google account security alerts).
+const AUTOMATED_DOMAINS = ['accounts.google.com', 'calendar-notification.google.com'];
+
+export function automatedSenderReason(emailRaw) {
+  const email = String(emailRaw || '').trim().toLowerCase();
+  const at = email.indexOf('@');
+  if (at < 1 || at === email.length - 1) return '';   // no usable address — caller's own guards handle it
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+
+  if (AUTOMATED_LOCAL_RE.test(local)) return `automated local-part "${local}@"`;
+  if (AUTOMATED_DOMAINS.includes(domain)) return `system domain "@${domain}"`;
+  // any no-reply / security / calendar / notification style address on a Google domain
+  if ((domain === 'google.com' || domain.endsWith('.google.com')) &&
+      /^(?:no[._-]?reply|security|calendar|notif|alert)/.test(local)) return `Google system sender "${email}"`;
+  return '';
+}
+
+/** True when the sender looks automated / non-human (see automatedSenderReason). */
+export function isAutomatedSender(email) {
+  return automatedSenderReason(email) !== '';
+}
+
 /* ---------- shared JSON extraction + tiny validators ---------- */
 
 /** Pull the first JSON object out of model text, tolerating ```fences``` and stray prose. */
